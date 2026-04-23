@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Classroom of the Elite — LN Reader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=Cinzel:wght@400;600&family=Noto+Sans+JP:wght@300;400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="dark">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <button
+        class="sidebar-toggle"
+        id="sidebarToggle"
+        aria-label="Toggle sidebar"
+      >
+        <span></span><span></span><span></span>
+      </button>
+      <div class="logo">
+        <span class="logo-jp">最高育成高校</span>
+        <span class="logo-en">LN Reader</span>
+      </div>
+      <!-- Chapter breadcrumb shown while reading -->
+      <div class="topbar-chapter" id="topbarChapter"></div>
+      <div class="topbar-right">
+        <button class="icon-btn" id="fontDecBtn" title="Giảm cỡ chữ">A−</button>
+        <button class="icon-btn" id="fontIncBtn" title="Tăng cỡ chữ">A+</button>
+        <button class="icon-btn" id="sepiaBtn" title="Sepia mode">◑</button>
+        <button class="icon-btn" id="themeBtn" title="Đổi giao diện">☀</button>
+        <button class="icon-btn" id="focusBtn" title="Focus mode">⊡</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- SIDEBAR OVERLAY (mobile) -->
+      <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+      <!-- SIDEBAR -->
+      <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">Mục lục</div>
+        <div class="sidebar-content" id="sidebarContent"></div>
+      </nav>
+
+      <!-- READER PANE -->
+      <main class="reader" id="reader">
+        <!-- WELCOME SCREEN -->
+        <div class="welcome" id="welcome">
+          <div class="welcome-inner">
+            <div class="welcome-kana">ようこそ</div>
+            <h1 class="welcome-title">Classroom of the Elite</h1>
+            <p class="welcome-sub">
+              Chọn một chương từ mục lục để bắt đầu đọc.
+            </p>
+            <button class="welcome-btn" id="welcomeOpenBtn">Mở mục lục</button>
+          </div>
+        </div>
+
+        <!-- CHAPTER VIEW -->
+        <article class="chapter-view" id="chapterView" style="display: none">
+          <div class="chapter-meta" id="chapterMeta"></div>
+          <h1 class="chapter-title" id="chapterTitle"></h1>
+          <div class="chapter-body" id="chapterBody"></div>
+          <div class="chapter-nav" id="chapterNav">
+            <button class="nav-btn" id="prevBtn">← Chương trước</button>
+            <button class="nav-btn back-top-inline" id="backTopBtn">
+              ↑ Đầu trang
+            </button>
+            <button class="nav-btn" id="nextBtn">Chương tiếp →</button>
+          </div>
+        </article>
+
+        <!-- LOADING -->
+        <div class="loading-screen" id="loadingScreen" style="display: none">
+          <div class="spinner"></div>
+          <p>Đang tải chương...</p>
+        </div>
+      </main>
+    </div>
+
+    <!-- PROGRESS BAR -->
+    <div class="reading-progress" id="readingProgress"></div>
+
+    <!-- BACK TO TOP (floating) -->
+    <button class="fab-back-top" id="fabBackTop" aria-label="Back to top">
+      ↑
+    </button>
+
+    <!-- FAB (mobile: open sidebar) -->
+    <button class="fab-menu" id="fabMenu" aria-label="Mở mục lục">☰</button>
+
+    <!-- LIGHTBOX -->
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true">
+      <button class="lightbox-close" id="lightboxClose" aria-label="Đóng">
+        ✕
+      </button>
+      <img class="lightbox-img" id="lightboxImg" src="" alt="" />
+    </div>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1024 @@
+/* ============================================================
+   style.css — Classroom of the Elite LN Reader
+   Aesthetic: editorial / ink-on-paper luxury dark theme
+   v2 — Full UI/UX upgrade
+   ============================================================ */
+
+/* ── CSS Variables ─────────────────────────────────────────── */
+:root {
+  --font-body: "Lora", "Noto Sans JP", Georgia, serif;
+  --font-display: "Cinzel", Georgia, serif;
+
+  /* Light theme */
+  --bg: #f4f1eb;
+  --bg-sidebar: #ede9e0;
+  --bg-card: #ffffff;
+  --text: #1a1612;
+  --text-muted: #7a6e60;
+  --text-sidebar: #3d3529;
+  --border: rgba(0, 0, 0, 0.1);
+  --accent: #8b1a1a;
+  --accent-dim: rgba(139, 26, 26, 0.1);
+  --accent-hover: #a82222;
+  --topbar-bg: rgba(244, 241, 235, 0.92);
+  --active-bg: rgba(139, 26, 26, 0.12);
+  --active-text: #8b1a1a;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.07);
+  --char-color: #8b1a1a;
+  --progress-bg: #8b1a1a;
+  --dialogue-border: rgba(139, 26, 26, 0.25);
+  --img-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+  --sidebar-width: 300px;
+  --topbar-h: 52px;
+  --font-size: 18px;
+  --content-max: 680px;
+}
+
+.dark {
+  --bg: #0d0c0a;
+  --bg-sidebar: #111009;
+  --bg-card: #161411;
+  --text: #e8e0d0;
+  --text-muted: #6a6050;
+  --text-sidebar: #c8bfb0;
+  --border: rgba(255, 255, 255, 0.07);
+  --accent: #c9a84c;
+  --accent-dim: rgba(201, 168, 76, 0.1);
+  --accent-hover: #e0be6a;
+  --topbar-bg: rgba(13, 12, 10, 0.92);
+  --active-bg: rgba(201, 168, 76, 0.13);
+  --active-text: #c9a84c;
+  --shadow: 0 4px 32px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
+  --char-color: #c9a84c;
+  --progress-bg: #c9a84c;
+  --dialogue-border: rgba(201, 168, 76, 0.22);
+  --img-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Sepia theme */
+.sepia {
+  --bg: #f2e8d5;
+  --bg-sidebar: #ece0c8;
+  --bg-card: #f9f3e8;
+  --text: #2d1f0e;
+  --text-muted: #8a6d4a;
+  --text-sidebar: #4a3520;
+  --border: rgba(90, 60, 20, 0.15);
+  --accent: #7a4f1e;
+  --accent-dim: rgba(122, 79, 30, 0.12);
+  --accent-hover: #9a6a30;
+  --topbar-bg: rgba(242, 232, 213, 0.92);
+  --active-bg: rgba(122, 79, 30, 0.13);
+  --active-text: #7a4f1e;
+  --shadow: 0 4px 24px rgba(60, 30, 0, 0.12);
+  --shadow-sm: 0 2px 8px rgba(60, 30, 0, 0.08);
+  --char-color: #7a4f1e;
+  --progress-bg: #7a4f1e;
+  --dialogue-border: rgba(122, 79, 30, 0.25);
+  --img-shadow: 0 8px 32px rgba(60, 30, 0, 0.15);
+}
+
+/* ── Reset & Base ────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  transition:
+    background 0.35s ease,
+    color 0.35s ease;
+  overflow-x: hidden;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ── Reading Progress Bar ────────────────────────────────────── */
+.reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  z-index: 200;
+  transition: width 0.1s linear;
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* ── Topbar ──────────────────────────────────────────────────── */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--topbar-h);
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px 0 10px;
+  z-index: 100;
+  gap: 10px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition:
+    background 0.35s ease,
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+/* Focus mode hides topbar on scroll */
+body.focus-mode .topbar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-100%);
+}
+
+body.focus-mode .topbar:hover,
+body.focus-mode:not(.scrolled) .topbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.logo {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.logo-jp {
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.28em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.logo-en {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Chapter title breadcrumb in topbar */
+.topbar-chapter {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 8px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.topbar-chapter.visible {
+  opacity: 1;
+}
+
+.sidebar-toggle {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: 6px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+  background: var(--accent-dim);
+}
+
+.sidebar-toggle span {
+  display: block;
+  height: 1.5px;
+  background: var(--text);
+  border-radius: 2px;
+  transition:
+    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.22s,
+    width 0.22s;
+}
+
+.sidebar-toggle span:nth-child(2) {
+  width: 66%;
+}
+
+.sidebar-toggle.open span:nth-child(1) {
+  transform: translateY(5.5px) rotate(45deg);
+}
+.sidebar-toggle.open span:nth-child(2) {
+  opacity: 0;
+  width: 0;
+}
+.sidebar-toggle.open span:nth-child(3) {
+  transform: translateY(-5.5px) rotate(-45deg);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.icon-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Layout ──────────────────────────────────────────────────── */
+.layout {
+  display: flex;
+  min-height: 100vh;
+  padding-top: var(--topbar-h);
+}
+
+/* ── Sidebar Overlay (mobile) ────────────────────────────────── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 90;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  transition: opacity 0.25s ease;
+}
+
+.sidebar-overlay.visible {
+  display: block;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  height: calc(100vh - var(--topbar-h));
+  position: sticky;
+  top: var(--topbar-h);
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition:
+    transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 3px;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-sidebar);
+  z-index: 1;
+}
+
+.sidebar-content {
+  padding: 6px 0 24px;
+}
+
+/* Year group */
+.nav-year {
+  padding: 16px 20px 6px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Volume group */
+.nav-volume-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 8px 24px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  min-height: 44px;
+}
+
+.nav-volume-header:hover {
+  background: var(--accent-dim);
+}
+
+.nav-volume-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-sidebar);
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+}
+
+.nav-volume-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  letter-spacing: 0.03em;
+}
+
+.nav-volume-arrow {
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.nav-volume-arrow.open {
+  transform: rotate(90deg);
+}
+
+/* Active volume highlight */
+.nav-volume-header.has-active .nav-volume-name {
+  color: var(--accent);
+}
+
+.nav-chapter-list {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-chapter-list.open {
+  max-height: 3000px;
+}
+
+/* Chapter item */
+.nav-chapter {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 9px 16px 9px 36px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  border-left: 2px solid transparent;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+.nav-chapter:hover {
+  background: var(--accent-dim);
+  color: var(--text-sidebar);
+  border-left-color: var(--border);
+}
+
+.nav-chapter.active {
+  background: var(--active-bg);
+  color: var(--active-text);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Reader ──────────────────────────────────────────────────── */
+.reader {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Welcome Screen ──────────────────────────────────────────── */
+.welcome {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - var(--topbar-h));
+  width: 100%;
+  padding: 40px 20px;
+}
+
+.welcome-inner {
+  text-align: center;
+  max-width: 480px;
+}
+
+.welcome-kana {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.45em;
+  color: var(--accent);
+  margin-bottom: 28px;
+  opacity: 0.65;
+}
+
+.welcome-title {
+  font-family: var(--font-display);
+  font-size: clamp(22px, 4vw, 36px);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.welcome-sub {
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1.75;
+  margin-bottom: 36px;
+}
+
+.welcome-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 32px;
+  border: 1px solid var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  border-radius: 4px;
+  transition:
+    background 0.22s,
+    color 0.22s,
+    transform 0.15s;
+}
+
+.welcome-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+  transform: translateY(-1px);
+}
+
+/* ── Chapter View ────────────────────────────────────────────── */
+.chapter-view {
+  width: 100%;
+  max-width: var(--content-max);
+  padding: 64px 48px 100px;
+  animation: fadeSlideIn 0.4s ease both;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chapter-meta {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+  opacity: 0.75;
+}
+
+.chapter-title {
+  font-family: var(--font-display);
+  font-size: clamp(19px, 2.8vw, 27px);
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  line-height: 1.45;
+  color: var(--text);
+  margin-bottom: 44px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+/* Decorative rule under title */
+.chapter-title::after {
+  content: "";
+  display: block;
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 48px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* ── Chapter Body Typography ─────────────────────────────────── */
+.chapter-body {
+  font-size: var(--font-size);
+  line-height: 2.05;
+  color: var(--text);
+}
+
+.chapter-body p {
+  margin-bottom: 1.35em;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Dialogue — subtle left highlight */
+.chapter-body p.dialogue {
+  padding-left: 14px;
+  border-left: 2px solid var(--dialogue-border);
+  margin-left: 0;
+  font-style: italic;
+}
+
+/* Section break */
+.chapter-body .section-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 3em 0 1.4em;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Section heading inside text */
+.chapter-body .section-title {
+  font-family: var(--font-display);
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 2.2em 0 0.9em;
+  letter-spacing: 0.05em;
+}
+
+/* Character name */
+.char {
+  color: var(--char-color);
+  font-style: italic;
+}
+
+/* ── Chapter Images ─────────────────────────────────────────── */
+.chapter-img {
+  margin: 2.5em auto 3em;
+  text-align: center;
+}
+
+.chapter-img img,
+.chapter-body img {
+  display: block;
+  width: auto;
+  max-width: min(100%, 640px);
+  height: auto;
+  margin: 0 auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  box-shadow: var(--img-shadow);
+  background: var(--bg-card);
+  object-fit: contain;
+  max-height: 82vh;
+  cursor: zoom-in;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.chapter-img img:hover,
+.chapter-body img:hover {
+  transform: scale(1.01);
+  box-shadow:
+    var(--img-shadow),
+    0 0 0 2px var(--accent-dim);
+}
+
+.chapter-body p + .chapter-img,
+.chapter-img + p {
+  margin-top: 2em;
+}
+
+/* Image error state */
+.chapter-img.img-error {
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--accent-dim);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+/* ── Chapter Navigation ──────────────────────────────────────── */
+.chapter-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 64px;
+  padding-top: 36px;
+  border-top: 1px solid var(--border);
+}
+
+.nav-btn {
+  flex: 1;
+  max-width: 200px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  border-radius: 6px;
+  transition:
+    border-color 0.2s,
+    color 0.2s,
+    background 0.2s,
+    transform 0.15s;
+  line-height: 1.4;
+}
+
+.nav-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+  transform: translateY(-1px);
+}
+
+.nav-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.back-top-inline {
+  flex: 0;
+  max-width: 100px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.nav-btn:last-child {
+  text-align: right;
+}
+
+/* ── Loading Screen ──────────────────────────────────────────── */
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: calc(100vh - var(--topbar-h));
+  color: var(--text-muted);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Floating Action Buttons ─────────────────────────────────── */
+.fab-back-top,
+.fab-menu {
+  position: fixed;
+  bottom: 28px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease,
+    background 0.2s,
+    color 0.2s;
+  z-index: 80;
+}
+
+.fab-back-top {
+  right: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+
+.fab-back-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.fab-back-top:hover,
+.fab-menu:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* FAB menu: only show on mobile */
+.fab-menu {
+  right: 76px;
+  display: none;
+}
+
+/* ── Lightbox ────────────────────────────────────────────────── */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  cursor: zoom-out;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.lightbox.open {
+  display: flex;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lightbox-img {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.8);
+  animation: zoomIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes zoomIn {
+  from {
+    transform: scale(0.93);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.lightbox-close {
+  position: fixed;
+  top: 18px;
+  right: 22px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.2s,
+    color 0.2s;
+  z-index: 1;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* ── Mobile ──────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 285px;
+    --font-size: 17px;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: var(--topbar-h);
+    height: calc(100vh - var(--topbar-h));
+    z-index: 95;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: var(--sidebar-width) !important;
+    overflow-y: auto;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .chapter-view {
+    padding: 44px 22px 72px;
+  }
+
+  .chapter-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .nav-btn {
+    max-width: 100%;
+    text-align: center !important;
+    padding: 15px 18px;
+  }
+
+  .back-top-inline {
+    max-width: 100%;
+  }
+
+  /* Show FAB menu on mobile */
+  .fab-menu {
+    display: flex;
+  }
+
+  /* Push back-to-top left on mobile */
+  .fab-back-top {
+    right: 24px;
+  }
+
+  /* Topbar chapter title hidden on mobile (too narrow) */
+  .topbar-chapter {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .chapter-view {
+    padding: 36px 16px 64px;
+  }
+
+  .chapter-title {
+    font-size: 18px;
+    margin-bottom: 32px;
+    padding-bottom: 22px;
+  }
+
+  .chapter-body {
+    font-size: 16px;
+    line-height: 1.95;
+  }
+
+  .chapter-img img,
+  .chapter-body img {
+    max-width: 100%;
+    border-radius: 6px;
+  }
+}
+
+/* ── Desktop sidebar collapse ────────────────────────────────── */
+@media (min-width: 769px) {
+  .sidebar.collapsed {
+    width: 0;
+    border-right-width: 0;
+  }
+}
+
+/* ── Scrollbar styling (desktop) ─────────────────────────────── */
+@media (min-width: 769px) {
+  ::-webkit-scrollbar {
+    width: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+}
+
+/* ── Focus mode adjustments ──────────────────────────────────── */
+body.focus-mode .sidebar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.focus-mode .reader {
+  transition: padding 0.3s ease;
+}
+
+body.focus-mode .chapter-view {
+  max-width: 640px;
+}
+
+body.focus-mode #focusBtn {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
