@@ -1,26 +1,22 @@
-// app.js — LN Reader (Volume-based, dynamic chapter parsing)
+// app.js — LN Reader
 // ============================================================
-// Luồng hoạt động:
-//   1. Sidebar hiển thị Year → Volume (không cần biết chương trước)
-//   2. Người dùng click Volume → fetch file .txt → parse chương
-//   3. Chương được cache trong volumeCache để không fetch lại
-//   4. lastRead lưu { volId, chapIdx } vào localStorage
+// Sidebar builds from Year -> Volume.
+// Chapters are parsed lazily from each volume text file.
+// Reader state is kept in localStorage for theme, font size, and last read.
 // ============================================================
 
-// ── Cache ────────────────────────────────────────────────────
-// volumeCache[volId] = [ { title, body }, ... ]
 const volumeCache = {};
+const THEME_ORDER = ["dark", "light", "sepia"];
 
-// ── State ────────────────────────────────────────────────────
 const state = {
-  volId: null, // id của volume đang hiển thị
-  chapIdx: -1, // index chương trong volume
-  fontSize: parseInt(localStorage.getItem("ln_fontSize")) || 18,
+  volId: null,
+  chapIdx: -1,
+  fontSize: parseInt(localStorage.getItem("ln_fontSize"), 10) || 18,
   theme: localStorage.getItem("ln_theme") || "dark",
 };
 
-// ── DOM ──────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
+
 const sidebar = $("sidebar");
 const sidebarContent = $("sidebarContent");
 const sidebarOverlay = $("sidebarOverlay");
@@ -29,24 +25,32 @@ const welcome = $("welcome");
 const chapterView = $("chapterView");
 const chapterMeta = $("chapterMeta");
 const chapterTitle = $("chapterTitle");
+const chapterContext = $("chapterContext");
 const chapterBody = $("chapterBody");
 const loadingScreen = $("loadingScreen");
 const themeBtn = $("themeBtn");
+const sepiaBtn = $("sepiaBtn");
+const focusBtn = $("focusBtn");
 const fontIncBtn = $("fontIncBtn");
 const fontDecBtn = $("fontDecBtn");
 const readingProgress = $("readingProgress");
 const welcomeOpenBtn = $("welcomeOpenBtn");
+const welcomeContinueBtn = $("welcomeContinueBtn");
+const sidebarSearch = $("sidebarSearch");
+const sidebarCount = $("sidebarCount");
+const welcomeStats = $("welcomeStats");
+const welcomeLastRead = $("welcomeLastRead");
+const topbarChapter = $("topbarChapter");
 
-// ── Init ─────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   applyTheme(state.theme);
   applyFontSize(state.fontSize);
   buildSidebar();
+  renderLibraryOverview();
   attachEvents();
 
   if (window.innerWidth <= 768) closeSidebar();
 
-  // Restore last read position
   const saved = loadLastRead();
   if (saved) {
     openChapterByRef(saved.volId, saved.chapIdx);
@@ -55,32 +59,42 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// ── Build Sidebar (static skeleton, chapters filled dynamically) ──
 function buildSidebar() {
   let html = "";
 
   LIBRARY.forEach((year) => {
-    html += `<div class="nav-year">${escHtml(year.label)}</div>`;
+    const yearSearch = `${year.label} ${year.volumes.map((vol) => vol.label).join(" ")}`;
+    html += `
+      <section class="nav-year-group" data-year-search="${escAttr(yearSearch.toLowerCase())}">
+        <div class="nav-year">${escHtml(year.label)}</div>
+    `;
 
     year.volumes.forEach((vol) => {
-      const isDefault = false; // no volume auto-expanded
+      const searchText =
+        `${year.label} ${vol.label} ${vol.translator || ""}`.toLowerCase();
       html += `
-        <div class="nav-volume-header" onclick="handleVolumeClick('${vol.id}')">
-          <div>
-            <div class="nav-volume-name">${escHtml(vol.label)}</div>
-            ${vol.translator ? `<div class="nav-volume-meta">Dịch: ${escHtml(vol.translator)}</div>` : ""}
+        <div class="nav-volume-block" data-search="${escAttr(searchText)}">
+          <div class="nav-volume-header" data-vol-id="${escAttr(vol.id)}" onclick="handleVolumeClick('${vol.id}')">
+            <div>
+              <div class="nav-volume-name">${escHtml(vol.label)}</div>
+              ${vol.translator ? `<div class="nav-volume-meta">Dich: ${escHtml(vol.translator)}</div>` : ""}
+            </div>
+            <span class="nav-volume-arrow" id="arrow-${vol.id}">▶</span>
           </div>
-          <span class="nav-volume-arrow" id="arrow-${vol.id}">▶</span>
+          <div class="nav-chapter-list" id="chaplist-${vol.id}"></div>
         </div>
-        <div class="nav-chapter-list" id="chaplist-${vol.id}"></div>
       `;
     });
+
+    html += `</section>`;
   });
 
   sidebarContent.innerHTML = html;
+  updateSidebarCount(
+    LIBRARY.reduce((sum, year) => sum + year.volumes.length, 0),
+  );
 }
 
-// ── Handle Volume Click: load if needed, then toggle ─────────
 async function handleVolumeClick(volId) {
   const vol = findVol(volId);
   if (!vol) return;
@@ -89,41 +103,36 @@ async function handleVolumeClick(volId) {
   const arrowEl = document.getElementById(`arrow-${volId}`);
   const isOpen = listEl.classList.contains("open");
 
-  // If already open → collapse and return
   if (isOpen) {
     listEl.classList.remove("open");
     arrowEl.classList.remove("open");
     return;
   }
 
-  // If not yet loaded → fetch + parse
   if (!volumeCache[volId]) {
-    listEl.innerHTML = `<div class="nav-chapter-loading">Đang tải…</div>`;
+    listEl.innerHTML = `<div class="nav-chapter-loading">Dang tai...</div>`;
     listEl.classList.add("open");
     arrowEl.classList.add("open");
 
     try {
-      console.log(vol.file);
       const raw = await fetchText(vol.file);
       volumeCache[volId] = parseChapters(raw);
     } catch (err) {
-      listEl.innerHTML = `<div class="nav-chapter-error">⚠ Không tải được file</div>`;
+      listEl.innerHTML = `<div class="nav-chapter-error">Khong tai duoc file</div>`;
       console.error(err);
       return;
     }
   }
 
-  // Render chapter list
   renderChapterList(volId);
   listEl.classList.add("open");
   arrowEl.classList.add("open");
 }
 
-// ── Render chapter buttons inside a volume's list ─────────────
 function renderChapterList(volId) {
   const listEl = document.getElementById(`chaplist-${volId}`);
   const chapters = volumeCache[volId];
-  if (!chapters) return;
+  if (!listEl || !chapters) return;
 
   let html = "";
   chapters.forEach((chap, idx) => {
@@ -140,12 +149,10 @@ function renderChapterList(volId) {
   listEl.innerHTML = html;
 }
 
-// ── Open chapter by volId + chapIdx ──────────────────────────
 async function openChapter(volId, chapIdx) {
   const vol = findVol(volId);
   if (!vol) return;
 
-  // Load volume if not cached
   if (!volumeCache[volId]) {
     showLoading();
     try {
@@ -161,15 +168,12 @@ async function openChapter(volId, chapIdx) {
   const chap = chapters[chapIdx];
   if (!chap) return;
 
-  // Update state
   const prevVolId = state.volId;
   const prevChapIdx = state.chapIdx;
   state.volId = volId;
   state.chapIdx = chapIdx;
-
   saveLastRead(volId, chapIdx);
 
-  // Refresh old active chapter button
   if (prevVolId) {
     const prevBtn = document.getElementById(
       `navchap-${prevVolId}-${prevChapIdx}`,
@@ -177,28 +181,26 @@ async function openChapter(volId, chapIdx) {
     if (prevBtn) prevBtn.classList.remove("active");
   }
 
-  // Ensure this volume is open in sidebar + refresh list
   const listEl = document.getElementById(`chaplist-${volId}`);
   const arrowEl = document.getElementById(`arrow-${volId}`);
   if (listEl && !listEl.classList.contains("open")) {
     listEl.classList.add("open");
-    arrowEl && arrowEl.classList.add("open");
+    if (arrowEl) arrowEl.classList.add("open");
   }
-  renderChapterList(volId); // re-render to set active state
 
-  // Scroll active chapter into view in sidebar
+  renderChapterList(volId);
+  updateActiveVolumeHeader();
+
   const activeBtn = document.getElementById(`navchap-${volId}-${chapIdx}`);
   if (activeBtn)
     activeBtn.scrollIntoView({ block: "nearest", behavior: "smooth" });
 
-  // Render chapter content
   renderChapter(vol, chap, chapters, chapIdx);
+  renderLibraryOverview();
 
-  // Close sidebar on mobile
   if (window.innerWidth <= 768) closeSidebar();
 }
 
-// Wrapper used for restoring last read (may need to load volume first)
 async function openChapterByRef(volId, chapIdx) {
   showLoading();
   const vol = findVol(volId);
@@ -212,65 +214,70 @@ async function openChapterByRef(volId, chapIdx) {
       const raw = await fetchText(vol.file);
       volumeCache[volId] = parseChapters(raw);
     } catch (err) {
+      console.error(err);
       showWelcome();
       return;
     }
   }
+
   openChapter(volId, chapIdx);
 }
 
-// ── Render chapter into reader pane ──────────────────────────
 function renderChapter(vol, chap, chapters, chapIdx) {
   const year = findYearByVolId(vol.id);
+  const chapterCount = chapters.length;
+  const estimate = estimateReadingMinutes(chap.body);
 
   chapterMeta.textContent = [
     year ? year.label : "",
     vol.label,
-    vol.translator ? "Dịch: " + vol.translator : "",
+    vol.translator ? "Dich: " + vol.translator : "",
   ]
     .filter(Boolean)
     .join("  ·  ");
 
   chapterTitle.textContent = chap.title;
+  chapterContext.innerHTML = `
+    <span>Chuong ${chapIdx + 1}/${chapterCount}</span>
+    <span>~${estimate} phut doc</span>
+    <span>Tu dong luu vi tri</span>
+  `;
   chapterBody.innerHTML = formatBody(chap.body, vol.imagesDir);
 
-  // Prev / Next
   const prevBtn = $("prevBtn");
   const nextBtn = $("nextBtn");
 
   prevBtn.disabled = chapIdx <= 0;
-  nextBtn.disabled = chapIdx >= chapters.length - 1;
+  nextBtn.disabled = chapIdx >= chapterCount - 1;
 
   prevBtn.onclick = () => openChapter(vol.id, chapIdx - 1);
   nextBtn.onclick = () => openChapter(vol.id, chapIdx + 1);
 
+  updateTopbarChapter(vol.label, chap.title);
   hideLoading();
   showChapterView();
-  window.scrollTo({ top: 0, behavior: "instant" });
+  window.scrollTo({ top: 0, behavior: "auto" });
+  updateProgress();
 }
 
 function renderFetchError(vol, err) {
   chapterMeta.textContent = vol.label;
-  chapterTitle.textContent = "Không thể tải file";
+  chapterTitle.textContent = "Khong the tai file";
+  chapterContext.innerHTML = "";
   chapterBody.innerHTML = `
     <p style="color:var(--accent); font-family:var(--font-display); font-size:14px;">
-      ⚠ Lỗi khi tải: <code>${escHtml(vol.file)}</code><br>
+      Loi khi tai: <code>${escHtml(vol.file)}</code><br>
       <span style="font-size:12px; opacity:0.7">${escHtml(String(err))}</span>
     </p>
     <p style="margin-top:16px; font-size:14px; color:var(--text-muted); line-height:1.8;">
-      Kiểm tra lại:<br>
-      • File tồn tại đúng đường dẫn chưa?<br>
-      • Đang chạy qua local server chưa? (<code>python3 -m http.server</code>)<br>
-      • Tên file/folder có dấu/khoảng cách có khớp chính xác không?
-    </p>`;
+      Kiem tra duong dan file va chay bang local server de fetch noi dung.
+    </p>
+  `;
   hideLoading();
   showChapterView();
 }
 
-// ── Parse .txt → array of { title, body } ────────────────────
-// Quy tắc: mỗi chương bắt đầu bằng dòng "# Tiêu đề"
 function parseChapters(raw) {
-  // Normalize line endings
   const text = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = text.split("\n");
   const chapters = [];
@@ -278,7 +285,6 @@ function parseChapters(raw) {
 
   lines.forEach((line) => {
     if (/^#\s+/.test(line)) {
-      // New chapter heading
       if (current) chapters.push(current);
       current = {
         title: line
@@ -288,27 +294,18 @@ function parseChapters(raw) {
         body: "",
       };
     } else {
-      if (!current) {
-        // Text before first heading → treat as a preamble chapter
-        current = { title: "Mở đầu", body: "" };
-      }
+      if (!current) current = { title: "Mo dau", body: "" };
       current.body += line + "\n";
     }
   });
 
-  if (current && (current.body.trim() || current.title !== "Mở đầu")) {
+  if (current && (current.body.trim() || current.title !== "Mo dau")) {
     chapters.push(current);
   }
 
   return chapters;
 }
 
-// ── Format body text → HTML ───────────────────────────────────
-// Supports:
-//   [img:filename]   → <img> tag using imagesDir
-//   ## Subtitle      → section heading
-//   Phần X: ...      → section label
-//   blank line       → paragraph break
 function formatBody(raw, imagesDir) {
   const paragraphs = raw.split(/\n{2,}/);
   let html = "";
@@ -317,35 +314,34 @@ function formatBody(raw, imagesDir) {
     const trimmed = block.trim();
     if (!trimmed) return;
 
-    // ── Image reference ──────────────────────────────────────
-    // Matches [img:some_file.png] optionally surrounded by whitespace on the line
-    const imgMatch = trimmed.match(/^\[(?:img|hình ảnh)\s*:\s*([^\]]+)\]$/iu);
+    const imgMatch = trimmed.match(
+      /^\[(?:img|hình ảnh|hinh anh)\s*:\s*([^\]]+)\]$/iu,
+    );
     if (imgMatch) {
       const rawPath = imgMatch[1].trim();
-
-      // Nếu trong txt ghi images/image_1.jpeg thì bỏ images/ đi
       const filename = rawPath.replace(/^images\//i, "").trim();
-
       const src = imagesDir.replace(/\/?$/, "/") + filename;
 
       html += `
-    <figure class="chapter-img">
-      <img src="${escAttr(src)}" alt="${escAttr(filename)}"
-           loading="lazy"
-           onerror="console.error('Image load failed:', this.src); this.parentElement.classList.add('img-error')" />
-    </figure>`;
+        <figure class="chapter-img">
+          <img
+            src="${escAttr(src)}"
+            alt="${escAttr(filename)}"
+            loading="lazy"
+            onerror="console.error('Image load failed:', this.src); this.parentElement.classList.add('img-error')"
+          />
+        </figure>
+      `;
       return;
     }
 
-    // ── Section heading (##) ─────────────────────────────────
     if (trimmed.startsWith("## ")) {
       html += `<p class="section-title">${escHtml(trimmed.slice(3))}</p>`;
       return;
     }
 
-    // ── Section label (Phần X: / Mở đầu: / etc.) ────────────
     if (
-      /^(Phần \d+|Mở đầu|Kết thúc|Lời độc thoại|Ngoại truyện)\s*:/i.test(
+      /^(Phan \d+|Mo dau|Ket thuc|Loi doc thoai|Ngoai truyen)\s*:/i.test(
         trimmed,
       ) &&
       trimmed.length < 80
@@ -354,15 +350,12 @@ function formatBody(raw, imagesDir) {
       return;
     }
 
-    // ── Normal paragraph ─────────────────────────────────────
-    // Handle soft line breaks within a paragraph block
     const lines = trimmed
       .split("\n")
-      .map((l) => l.trim())
+      .map((line) => line.trim())
       .filter(Boolean);
     let text = escHtml(lines.join("\n")).replace(/\n/g, "<br>");
 
-    // Highlight character names
     CHARACTERS.forEach((name) => {
       const re = new RegExp(`(${escRegex(name)})`, "g");
       text = text.replace(re, `<span class="char">$1</span>`);
@@ -371,28 +364,30 @@ function formatBody(raw, imagesDir) {
     html += `<p>${text}</p>`;
   });
 
-  return html || "<p>Nội dung trống.</p>";
+  return html || "<p>Noi dung trong.</p>";
 }
 
-// ── Fetch helper ──────────────────────────────────────────────
 async function fetchText(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} - ${url}`);
   return await res.text();
 }
 
-// ── Lookup helpers ────────────────────────────────────────────
 function findVol(volId) {
-  for (const year of LIBRARY)
-    for (const vol of year.volumes) if (vol.id === volId) return vol;
+  for (const year of LIBRARY) {
+    for (const vol of year.volumes) {
+      if (vol.id === volId) return vol;
+    }
+  }
   return null;
 }
 
 function findYearByVolId(volId) {
-  return LIBRARY.find((y) => y.volumes.some((v) => v.id === volId)) || null;
+  return (
+    LIBRARY.find((year) => year.volumes.some((vol) => vol.id === volId)) || null
+  );
 }
 
-// ── localStorage ─────────────────────────────────────────────
 function saveLastRead(volId, chapIdx) {
   localStorage.setItem("ln_lastRead", JSON.stringify({ volId, chapIdx }));
 }
@@ -406,7 +401,6 @@ function loadLastRead() {
   }
 }
 
-// ── Show/Hide helpers ─────────────────────────────────────────
 function showLoading() {
   welcome.style.display = "none";
   chapterView.style.display = "none";
@@ -426,9 +420,9 @@ function showWelcome() {
   welcome.style.display = "flex";
   chapterView.style.display = "none";
   loadingScreen.style.display = "none";
+  updateTopbarChapter("", "");
 }
 
-// ── Sidebar ───────────────────────────────────────────────────
 function closeSidebar() {
   if (window.innerWidth <= 768) {
     sidebar.classList.remove("mobile-open");
@@ -461,53 +455,93 @@ function toggleSidebar() {
   }
 }
 
-// ── Theme ─────────────────────────────────────────────────────
 function applyTheme(theme) {
-  document.body.classList.toggle("dark", theme === "dark");
-  themeBtn.textContent = theme === "dark" ? "☀" : "☾";
+  document.body.classList.remove("dark", "sepia");
+
+  if (theme === "dark") {
+    document.body.classList.add("dark");
+  } else if (theme === "sepia") {
+    document.body.classList.add("sepia");
+  }
+
+  themeBtn.textContent = theme === "dark" ? "☀" : theme === "light" ? "◐" : "☾";
+  themeBtn.title =
+    theme === "dark"
+      ? "Chuyen sang giao dien sang"
+      : theme === "light"
+        ? "Chuyen sang giao dien sepia"
+        : "Chuyen sang giao dien toi";
+
+  sepiaBtn.classList.toggle("active", theme === "sepia");
+  sepiaBtn.textContent = theme === "sepia" ? "S" : "◑";
 }
 
-function toggleTheme() {
-  state.theme = state.theme === "dark" ? "light" : "dark";
+function setTheme(theme) {
+  state.theme = THEME_ORDER.includes(theme) ? theme : "dark";
   applyTheme(state.theme);
   localStorage.setItem("ln_theme", state.theme);
 }
 
-// ── Font size ─────────────────────────────────────────────────
+function toggleTheme() {
+  const currentIndex = THEME_ORDER.indexOf(state.theme);
+  const nextIndex = (currentIndex + 1) % THEME_ORDER.length;
+  setTheme(THEME_ORDER[nextIndex]);
+}
+
+function toggleSepiaTheme() {
+  setTheme(state.theme === "sepia" ? "dark" : "sepia");
+}
+
 function applyFontSize(size) {
-  document.documentElement.style.setProperty("--font-size", size + "px");
+  document.documentElement.style.setProperty("--font-size", `${size}px`);
 }
 
 function changeFontSize(delta) {
   state.fontSize = Math.min(24, Math.max(14, state.fontSize + delta));
   applyFontSize(state.fontSize);
-  localStorage.setItem("ln_fontSize", state.fontSize);
+  localStorage.setItem("ln_fontSize", String(state.fontSize));
 }
 
-// ── Reading progress ──────────────────────────────────────────
 function updateProgress() {
   const doc = document.documentElement;
   const total = doc.scrollHeight - doc.clientHeight;
-  readingProgress.style.width =
-    (total > 0 ? (window.scrollY / total) * 100 : 0) + "%";
+  const percentage = total > 0 ? (window.scrollY / total) * 100 : 0;
+  readingProgress.style.width = `${percentage}%`;
 }
 
-// ── Events ────────────────────────────────────────────────────
 function attachEvents() {
   sidebarToggle.addEventListener("click", toggleSidebar);
   sidebarOverlay.addEventListener("click", closeSidebar);
   themeBtn.addEventListener("click", toggleTheme);
+  sepiaBtn.addEventListener("click", toggleSepiaTheme);
   fontIncBtn.addEventListener("click", () => changeFontSize(1));
   fontDecBtn.addEventListener("click", () => changeFontSize(-1));
   welcomeOpenBtn.addEventListener("click", expandSidebar);
+  welcomeContinueBtn.addEventListener("click", () => {
+    const saved = loadLastRead();
+    if (saved) {
+      openChapterByRef(saved.volId, saved.chapIdx);
+    } else {
+      expandSidebar();
+    }
+  });
+
+  if (sidebarSearch) {
+    sidebarSearch.addEventListener("input", (event) => {
+      filterSidebar(event.target.value);
+    });
+  }
+
   window.addEventListener("scroll", updateProgress, { passive: true });
 
-  document.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "INPUT") return;
-    if (e.key === "ArrowRight") $("nextBtn")?.click();
-    if (e.key === "ArrowLeft") $("prevBtn")?.click();
-    if (e.key === "b" || e.key === "B") toggleSidebar();
-    if (e.key === "d" || e.key === "D") toggleTheme();
+  document.addEventListener("keydown", (event) => {
+    const tag = event.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+    if (event.key === "ArrowRight") $("nextBtn")?.click();
+    if (event.key === "ArrowLeft") $("prevBtn")?.click();
+    if (event.key === "b" || event.key === "B") toggleSidebar();
+    if (event.key === "d" || event.key === "D") toggleTheme();
   });
 
   window.addEventListener("resize", () => {
@@ -516,75 +550,29 @@ function attachEvents() {
       sidebar.classList.remove("mobile-open");
     }
   });
+
+  initFocusMode();
+  initBackToTop();
+  initFabMenu();
+  initLightbox();
 }
 
-// ── Utility ───────────────────────────────────────────────────
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-function escAttr(str) {
-  return String(str).replace(/"/g, "&quot;");
-}
-function escRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-/* ================================================================
-   app.js ADDITIONS — Thêm vào cuối file app.js hiện có
-   Bao gồm: sepia, focus mode, lightbox, back-to-top, FAB, topbar chapter
-   ================================================================ */
-
-/* ── Sepia Mode ─────────────────────────────────────────────── */
-(function initSepia() {
-  const btn = document.getElementById("sepiaBtn");
-  if (!btn) return;
-
-  // Restore saved sepia
-  if (localStorage.getItem("cote-sepia") === "1") {
-    document.body.classList.add("sepia");
-    // Remove dark if sepia is active
-    document.body.classList.remove("dark");
-    btn.classList.add("active");
-  }
-
-  btn.addEventListener("click", () => {
-    const isSepia = document.body.classList.toggle("sepia");
-    if (isSepia) {
-      document.body.classList.remove("dark");
-      localStorage.setItem("cote-sepia", "1");
-      localStorage.removeItem("cote-theme");
-      btn.classList.add("active");
-    } else {
-      localStorage.removeItem("cote-sepia");
-      btn.classList.remove("active");
-    }
-  });
-})();
-
-/* ── Focus Mode ─────────────────────────────────────────────── */
-(function initFocusMode() {
-  const btn = document.getElementById("focusBtn");
-  if (!btn) return;
+function initFocusMode() {
+  if (!focusBtn) return;
 
   let scrollTimeout;
-  let lastScrollY = window.scrollY;
 
-  // Show topbar briefly after scroll stops
   function onScroll() {
     document.body.classList.add("scrolled");
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => {
       document.body.classList.remove("scrolled");
     }, 1500);
-    lastScrollY = window.scrollY;
   }
 
-  btn.addEventListener("click", () => {
+  focusBtn.addEventListener("click", () => {
     const active = document.body.classList.toggle("focus-mode");
-    btn.classList.toggle("active", active);
+    focusBtn.classList.toggle("active", active);
     if (active) {
       window.addEventListener("scroll", onScroll, { passive: true });
     } else {
@@ -592,50 +580,38 @@ function escRegex(str) {
       document.body.classList.remove("scrolled");
     }
   });
-})();
+}
 
-/* ── Back To Top FAB ─────────────────────────────────────────── */
-(function initBackToTop() {
-  const fab = document.getElementById("fabBackTop");
-  const inlineBtn = document.getElementById("backTopBtn");
+function initBackToTop() {
+  const fab = $("fabBackTop");
+  const inlineBtn = $("backTopBtn");
   if (!fab) return;
 
   window.addEventListener(
     "scroll",
     () => {
-      if (window.scrollY > 400) {
-        fab.classList.add("visible");
-      } else {
-        fab.classList.remove("visible");
-      }
+      if (window.scrollY > 400) fab.classList.add("visible");
+      else fab.classList.remove("visible");
     },
     { passive: true },
   );
 
-  function scrollTop() {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   fab.addEventListener("click", scrollTop);
   if (inlineBtn) inlineBtn.addEventListener("click", scrollTop);
-})();
+}
 
-/* ── FAB Menu (mobile sidebar toggle) ────────────────────────── */
-(function initFabMenu() {
-  const fab = document.getElementById("fabMenu");
-  const sidebarToggle = document.getElementById("sidebarToggle");
+function initFabMenu() {
+  const fab = $("fabMenu");
   if (!fab || !sidebarToggle) return;
+  fab.addEventListener("click", () => sidebarToggle.click());
+}
 
-  fab.addEventListener("click", () => {
-    sidebarToggle.click();
-  });
-})();
-
-/* ── Lightbox for chapter images ─────────────────────────────── */
-(function initLightbox() {
-  const lightbox = document.getElementById("lightbox");
-  const lightboxImg = document.getElementById("lightboxImg");
-  const closeBtn = document.getElementById("lightboxClose");
+function initLightbox() {
+  const lightbox = $("lightbox");
+  const lightboxImg = $("lightboxImg");
+  const closeBtn = $("lightboxClose");
   if (!lightbox || !lightboxImg) return;
 
   function openLightbox(src, alt) {
@@ -650,88 +626,117 @@ function escRegex(str) {
     document.body.style.overflow = "";
   }
 
-  // Delegate click on dynamically rendered chapter images
-  document.getElementById("chapterBody").addEventListener("click", (e) => {
-    const img = e.target.closest("img");
+  chapterBody.addEventListener("click", (event) => {
+    const img = event.target.closest("img");
     if (img) openLightbox(img.src, img.alt);
   });
 
-  lightbox.addEventListener("click", (e) => {
-    if (e.target === lightbox) closeLightbox();
+  lightbox.addEventListener("click", (event) => {
+    if (event.target === lightbox) closeLightbox();
   });
 
   if (closeBtn) closeBtn.addEventListener("click", closeLightbox);
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && lightbox.classList.contains("open"))
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && lightbox.classList.contains("open")) {
       closeLightbox();
+    }
   });
-})();
+}
 
-/* ── Topbar chapter name ─────────────────────────────────────── */
-// Call this function after a chapter loads.
-// In your existing loadChapter() function, add:
-//   updateTopbarChapter(volumeName, chapterTitle);
-function updateTopbarChapter(volumeName, chapterTitle) {
-  const el = document.getElementById("topbarChapter");
-  if (!el) return;
-  if (volumeName && chapterTitle) {
-    el.textContent = volumeName + " · " + chapterTitle;
-    el.classList.add("visible");
+function updateTopbarChapter(volumeName, chapterName) {
+  if (!topbarChapter) return;
+
+  if (volumeName && chapterName) {
+    topbarChapter.textContent = `${volumeName} · ${chapterName}`;
+    topbarChapter.classList.add("visible");
   } else {
-    el.textContent = "";
-    el.classList.remove("visible");
+    topbarChapter.textContent = "";
+    topbarChapter.classList.remove("visible");
   }
 }
 
-// Auto-hook: watch chapterMeta and chapterTitle for changes (no app.js source needed)
-(function hookTopbarChapter() {
-  const meta = document.getElementById("chapterMeta");
-  const title = document.getElementById("chapterTitle");
-  if (!meta || !title) return;
+function renderLibraryOverview() {
+  const yearCount = LIBRARY.length;
+  const volumeCount = LIBRARY.reduce(
+    (sum, year) => sum + year.volumes.length,
+    0,
+  );
 
-  const observer = new MutationObserver(() => {
-    const metaText = meta.textContent.trim();
-    const titleText = title.textContent.trim();
-    updateTopbarChapter(metaText, titleText);
+  if (welcomeStats) {
+    welcomeStats.innerHTML = `
+      <span><strong>${yearCount}</strong> nam hoc</span>
+      <span><strong>${volumeCount}</strong> volume</span>
+    `;
+  }
+
+  const saved = loadLastRead();
+  if (!saved || !welcomeLastRead) return;
+
+  const vol = findVol(saved.volId);
+  if (!vol) return;
+
+  const chapter = volumeCache[saved.volId]?.[saved.chapIdx];
+  welcomeLastRead.innerHTML = `
+    <span class="welcome-last-read-label">Dang doc tiep</span>
+    <strong>${escHtml(vol.label)}</strong>
+    <span>${chapter ? escHtml(chapter.title) : "Mo lai dung vi tri da luu"}</span>
+  `;
+}
+
+function filterSidebar(query) {
+  const normalized = query.trim().toLowerCase();
+  const volumeBlocks = Array.from(
+    document.querySelectorAll(".nav-volume-block"),
+  );
+  const yearGroups = Array.from(document.querySelectorAll(".nav-year-group"));
+
+  let visibleCount = 0;
+
+  volumeBlocks.forEach((block) => {
+    const matched = !normalized || block.dataset.search.includes(normalized);
+    block.classList.toggle("is-hidden", !matched);
+    if (matched) visibleCount += 1;
   });
 
-  observer.observe(meta, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
-  observer.observe(title, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
-})();
-
-/* ── Auto-close sidebar on chapter select (mobile) ───────────── */
-// Patch: wrap existing chapter click handler to also close sidebar on mobile.
-// If your app.js already calls a function like loadChapter(), you can add this there.
-// Alternatively this MutationObserver auto-detects chapter changes:
-(function autoCloseSidebarOnMobile() {
-  const chapterView = document.getElementById("chapterView");
-  if (!chapterView) return;
-
-  const observer = new MutationObserver(() => {
-    if (window.innerWidth <= 768) {
-      const sidebar = document.getElementById("sidebar");
-      const overlay = document.getElementById("sidebarOverlay");
-      const toggle = document.getElementById("sidebarToggle");
-      if (sidebar && sidebar.classList.contains("mobile-open")) {
-        sidebar.classList.remove("mobile-open");
-        if (overlay) overlay.classList.remove("visible");
-        if (toggle) toggle.classList.remove("open");
-        document.body.style.overflow = "";
-      }
-    }
+  yearGroups.forEach((group) => {
+    const hasVisibleChild = Array.from(
+      group.querySelectorAll(".nav-volume-block"),
+    ).some((block) => !block.classList.contains("is-hidden"));
+    group.classList.toggle("is-hidden", !hasVisibleChild);
   });
 
-  observer.observe(chapterView, {
-    attributes: true,
-    attributeFilter: ["style"],
+  updateSidebarCount(visibleCount);
+}
+
+function updateSidebarCount(count) {
+  if (!sidebarCount) return;
+  sidebarCount.textContent = `${count} volume`;
+}
+
+function updateActiveVolumeHeader() {
+  document.querySelectorAll(".nav-volume-header").forEach((header) => {
+    header.classList.toggle("has-active", header.dataset.volId === state.volId);
   });
-})();
+}
+
+function estimateReadingMinutes(text) {
+  const words = String(text).trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 220));
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escAttr(str) {
+  return String(str).replace(/"/g, "&quot;");
+}
+
+function escRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

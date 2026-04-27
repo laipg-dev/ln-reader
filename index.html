@@ -43,7 +43,27 @@
 
       <!-- SIDEBAR -->
       <nav class="sidebar" id="sidebar">
-        <div class="sidebar-header">Mục lục</div>
+        <div class="sidebar-header">
+          <div class="sidebar-eyebrow">Library</div>
+          <div class="sidebar-title-row">
+            <div>
+              <div class="sidebar-title">Mục lục</div>
+              <p class="sidebar-subtitle">
+                Chọn năm học, volume và quay lại chương đang đọc.
+              </p>
+            </div>
+            <div class="sidebar-count" id="sidebarCount"></div>
+          </div>
+          <label class="sidebar-search">
+            <span>Tìm volume</span>
+            <input
+              type="search"
+              id="sidebarSearch"
+              placeholder="Ví dụ: Volume 7, Năm 2..."
+              autocomplete="off"
+            />
+          </label>
+        </div>
         <div class="sidebar-content" id="sidebarContent"></div>
       </nav>
 
@@ -52,12 +72,45 @@
         <!-- WELCOME SCREEN -->
         <div class="welcome" id="welcome">
           <div class="welcome-inner">
-            <div class="welcome-kana">ようこそ</div>
-            <h1 class="welcome-title">Classroom of the Elite</h1>
-            <p class="welcome-sub">
-              Chọn một chương từ mục lục để bắt đầu đọc.
-            </p>
-            <button class="welcome-btn" id="welcomeOpenBtn">Mở mục lục</button>
+            <section class="welcome-copy">
+              <div class="welcome-kana">ようこそ</div>
+              <p class="welcome-label">Light Novel Reader</p>
+              <h1 class="welcome-title">Classroom of the Elite</h1>
+              <p class="welcome-sub">
+                Một không gian đọc gọn, dịu mắt và ưu tiên nhịp đọc dài. Mở mục
+                lục để vào chương mới hoặc tiếp tục đúng vị trí bạn dừng lại.
+              </p>
+              <div class="welcome-actions">
+                <button class="welcome-btn" id="welcomeContinueBtn">
+                  Tiếp tục đọc
+                </button>
+                <button class="welcome-btn ghost" id="welcomeOpenBtn">
+                  Mở mục lục
+                </button>
+              </div>
+              <div class="welcome-shortcuts">
+                <span>← → đổi chương</span>
+                <span>B mở mục lục</span>
+                <span>D đổi theme</span>
+              </div>
+            </section>
+
+            <section class="welcome-panel" aria-label="Tổng quan thư viện">
+              <div class="welcome-panel-top">
+                <p class="welcome-panel-label">Thư viện hiện có</p>
+                <div class="welcome-stats" id="welcomeStats"></div>
+              </div>
+              <div class="welcome-panel-body">
+                <div class="welcome-last-read" id="welcomeLastRead">
+                  Chưa có lịch sử đọc. Hãy chọn một volume để bắt đầu.
+                </div>
+                <div class="welcome-modes">
+                  <span>Sáng rõ</span>
+                  <span>Tối dịu</span>
+                  <span>Sepia mềm</span>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
 
@@ -65,6 +118,7 @@
         <article class="chapter-view" id="chapterView" style="display: none">
           <div class="chapter-meta" id="chapterMeta"></div>
           <h1 class="chapter-title" id="chapterTitle"></h1>
+          <div class="chapter-context" id="chapterContext"></div>
           <div class="chapter-body" id="chapterBody"></div>
           <div class="chapter-nav" id="chapterNav">
             <button class="nav-btn" id="prevBtn">← Chương trước</button>
