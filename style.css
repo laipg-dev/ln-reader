@@ -836,7 +836,12 @@ body.focus-mode .topbar:hover {
     border-color 0.15s ease,
     background 0.15s ease;
   border-radius: 2px;
-  padding: 0 1px;
+  padding: 2px 2px; /* tăng vùng tap trên mobile */
+  /* Mobile tap fixes */
+  touch-action: manipulation; /* bỏ delay 300ms trên iOS */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .char:hover {

@@ -11,7 +11,7 @@ const THEME_ORDER = ["dark", "light", "sepia"];
 // ── Character portrait config ──────────────────────────────
 // ⚠️  Đổi đường dẫn này cho đúng với folder ảnh nhân vật của bạn.
 //    Ví dụ: "characters/"  hoặc  "images/characters/"
-const CHARACTERS_IMG_DIR = "cote_images/";
+const CHARACTERS_IMG_DIR = "characters/";
 const CHARACTERS_IMG_EXTS = ["png", "jpg", "jpeg", "webp"];
 
 // Tự động build bảng: alias 1 từ / tên ngắn → tên đầy đủ
@@ -663,7 +663,12 @@ function initLightbox() {
     lightboxImg.src = src;
     lightboxImg.alt = alt || "";
     lightbox.classList.add("open");
-    document.body.style.overflow = "hidden";
+    // iOS Safari cần fixed position để block scroll đúng cách
+    const scrollY = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.body.dataset.scrollY = scrollY;
   }
 
   function closeLightbox() {
@@ -835,7 +840,12 @@ function initCharPortrait() {
     // Small delay so CSS transition plays after position is set
     requestAnimationFrame(() => popup.classList.add("open"));
 
-    document.body.style.overflow = "hidden";
+    // iOS Safari cần fixed position để block scroll đúng cách
+    const scrollY = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.body.dataset.scrollY = scrollY;
 
     // Resolve alias → canonical full name for image lookup
     // VD: "Ayanokoji" → "Kiyotaka Ayanokoji"
@@ -857,7 +867,12 @@ function initCharPortrait() {
     popup.classList.remove("open");
     backdrop.classList.remove("open");
     popup.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
+    // Restore scroll (iOS-safe)
+    const savedY = parseInt(document.body.dataset.scrollY || "0", 10);
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.width = "";
+    window.scrollTo(0, savedY);
     currentName = "";
   }
 
@@ -885,9 +900,11 @@ function initCharPortrait() {
   }
 
   // Click on character name spans (event delegation)
-  chapterBody.addEventListener("click", (e) => {
+  // Dùng cả "click" và "touchend" để đảm bảo hoạt động trên iOS Safari
+  function handleCharTap(e) {
     const span = e.target.closest(".char");
     if (!span) return;
+    e.preventDefault();
     e.stopPropagation();
     const name = span.textContent.trim();
     if (name === currentName && popup.classList.contains("open")) {
@@ -895,7 +912,10 @@ function initCharPortrait() {
     } else {
       openPopup(name, span);
     }
-  });
+  }
+
+  chapterBody.addEventListener("click", handleCharTap);
+  chapterBody.addEventListener("touchend", handleCharTap, { passive: false });
 
   // Close on backdrop / close button / Escape
   backdrop.addEventListener("click", closePopup);
