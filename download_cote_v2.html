@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>COTE Image Downloader v2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:sans-serif;background:#12121e;color:#ddd;padding:16px;min-height:100vh}
+h1{color:#e94560;font-size:20px;margin-bottom:4px}
+.sub{color:#888;font-size:12px;margin-bottom:16px}
+.top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
+#startBtn{background:#e94560;color:#fff}
+#startBtn:disabled{background:#555;cursor:not-allowed}
+#dlAllBtn{background:transparent;color:#e94560;border:1px solid #e94560}
+#dlAllBtn:disabled{opacity:.35;cursor:not-allowed}
+.bar{flex:1;min-width:150px;height:10px;background:#222;border-radius:5px;overflow:hidden}
+.fill{height:100%;background:#e94560;border-radius:5px;transition:width .3s;width:0%}
+.stat{font-size:12px;color:#888;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.card{background:#1c1c2e;border-radius:8px;overflow:hidden;border:1px solid #2a2a3e;transition:border-color .2s}
+.card.ok{border-color:#2ecc71}
+.card.fail{border-color:#e74c3c}
+.card.loading{border-color:#f39c12}
+.thumb{width:100%;height:150px;object-fit:cover;display:block;background:#0d0d1a}
+.placeholder{width:100%;height:150px;display:flex;align-items:center;justify-content:center;color:#333;font-size:11px;background:#0d0d1a}
+.name{font-size:10px;padding:5px 6px;color:#aaa;text-align:center;line-height:1.3}
+.status{font-size:10px;padding:0 6px 4px;text-align:center}
+.card.ok .status{color:#2ecc71}
+.card.fail .status{color:#e74c3c}
+.card.loading .status{color:#f39c12}
+.dlbtn{display:block;width:calc(100%-12px);margin:0 6px 6px;padding:4px;background:#0d0d1a;color:#e94560;border:1px solid #e94560;border-radius:4px;cursor:pointer;font-size:10px}
+.dlbtn:hover{background:#1a1a2e}
+.log{margin-top:16px;background:#0a0a14;border-radius:8px;padding:10px;font-family:monospace;font-size:11px;max-height:160px;overflow-y:auto}
+.log div{padding:1px 0;border-bottom:1px solid #111}
+.ok-log{color:#2ecc71}.err-log{color:#e74c3c}.info-log{color:#3498db}
+</style>
+</head>
+<body>
+<h1>COTE Character Image Downloader v2</h1>
+<p class="sub">Tải ảnh nhân vật Classroom of the Elite từ You-Zitsu Wiki</p>
+<div class="top">
+  <button id="startBtn" onclick="start()">▶ Bắt đầu tải</button>
+  <button id="dlAllBtn" onclick="dlAll()" disabled>↓ Tải tất cả</button>
+  <div class="bar"><div class="fill" id="fill"></div></div>
+  <span class="stat" id="stat">0/70</span>
+</div>
+<div class="grid" id="grid"></div>
+<div class="log" id="log"></div>
+
+<script>
+const chars = [
+
+  ["Mika Kitagawa","Mika_Kitagawa"],
+  ["Vuong My Vu","Vuong_My_Vu"]
+];
+
+const blobs = {};
+let done = 0, ok = 0, running = false;
+
+const PROXY = "https://api.allorigins.win/raw?url=";
+const WIKI_API = "https://you-zitsu.fandom.com/api.php";
+
+function log(msg, cls='info-log') {
+  const d = document.createElement('div');
+  d.className = cls; d.textContent = msg;
+  const l = document.getElementById('log');
+  l.appendChild(d); l.scrollTop = l.scrollHeight;
+}
+
+function updateStats() {
+  const pct = (done/chars.length*100).toFixed(0);
+  document.getElementById('fill').style.width = pct+'%';
+  document.getElementById('stat').textContent = `${done}/${chars.length} — ${ok} OK`;
+}
+
+function buildGrid() {
+  const g = document.getElementById('grid');
+  g.innerHTML = '';
+  chars.forEach(([name], i) => {
+    g.innerHTML += `<div class="card" id="c${i}">
+      <div class="placeholder" id="p${i}">...</div>
+      <div class="name">${name}</div>
+      <div class="status" id="s${i}"></div>
+    </div>`;
+  });
+}
+
+async function getImageUrl(wikiSlug) {
+  const apiUrl = `${WIKI_API}?action=query&titles=${wikiSlug}&prop=pageimages&format=json&pithumbsize=500`;
+  const proxyUrl = PROXY + encodeURIComponent(apiUrl);
+  const r = await fetch(proxyUrl);
+  const data = await r.json();
+  const pages = data?.query?.pages || {};
+  for (const id in pages) {
+    if (id !== '-1') {
+      const src = pages[id]?.thumbnail?.source;
+      if (src) return src;
+    }
+  }
+  return null;
+}
+
+async function getImageUrlFallback(charName) {
+  // Try searching wiki
+  const apiUrl = `${WIKI_API}?action=opensearch&search=${encodeURIComponent(charName)}&limit=5&format=json`;
+  const proxyUrl = PROXY + encodeURIComponent(apiUrl);
+  const r = await fetch(proxyUrl);
+  const data = await r.json();
+  const titles = data[1] || [];
+  for (const title of titles) {
+    const slug = encodeURIComponent(title.replace(/ /g,'_'));
+    const url = await getImageUrl(slug);
+    if (url) return url;
+  }
+  return null;
+}
+
+async function fetchBlob(url) {
+  try {
+    const proxyUrl = PROXY + encodeURIComponent(url);
+    const r = await fetch(proxyUrl);
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    if (buf.byteLength < 3000) return null;
+    // detect type from URL
+    const type = url.includes('.png') ? 'image/png' : url.includes('.gif') ? 'image/gif' : 'image/jpeg';
+    return new Blob([buf], {type});
+  } catch { return null; }
+}
+
+async function processChar(name, slug, i) {
+  const card = document.getElementById('c'+i);
+  const status = document.getElementById('s'+i);
+  card.className = 'card loading';
+  status.textContent = 'đang tìm...';
+
+  let imgUrl = null;
+  try {
+    imgUrl = await getImageUrl(slug);
+    if (!imgUrl) imgUrl = await getImageUrlFallback(name);
+  } catch(e) {}
+
+  if (imgUrl) {
+    try {
+      const blob = await fetchBlob(imgUrl);
+      if (blob) {
+        const burl = URL.createObjectURL(blob);
+        const img = document.createElement('img');
+        img.className = 'thumb'; img.src = burl;
+        const ph = document.getElementById('p'+i);
+        ph && ph.replaceWith(img);
+        blobs[name] = {blob, ext: blob.type.includes('png')?'png':'jpg'};
+        card.className = 'card ok';
+        status.textContent = '✓ OK';
+        const btn = document.createElement('button');
+        btn.className = 'dlbtn'; btn.textContent = '↓ tải';
+        btn.onclick = () => dlOne(name);
+        card.appendChild(btn);
+        ok++;
+        log('✓ '+name, 'ok-log');
+        if (ok === 1) document.getElementById('dlAllBtn').disabled = false;
+        done++; updateStats(); return;
+      }
+    } catch(e) {}
+  }
+
+  card.className = 'card fail';
+  status.textContent = '✗ không có';
+  log('✗ '+name, 'err-log');
+  done++; updateStats();
+}
+
+async function start() {
+  if (running) return;
+  running = true;
+  done = 0; ok = 0;
+  document.getElementById('startBtn').disabled = true;
+  buildGrid();
+  log('Bắt đầu... dùng proxy allorigins.win', 'info-log');
+
+  for (let i = 0; i < chars.length; i += 4) {
+    const batch = chars.slice(i, i+4).map(([name,slug],j) => processChar(name,slug,i+j));
+    await Promise.all(batch);
+    await new Promise(r => setTimeout(r, 400));
+  }
+
+  log(`Xong! ${ok}/${chars.length} ảnh tải thành công.`, 'info-log');
+  running = false;
+  document.getElementById('startBtn').disabled = false;
+}
+
+function dlOne(name) {
+  const d = blobs[name]; if (!d) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(d.blob);
+  a.download = name+'.'+d.ext; a.click();
+}
+
+async function dlAll() {
+  for (const [name, d] of Object.entries(blobs)) {
+    dlOne(name);
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
+</script>
+</body>
+</html>

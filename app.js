@@ -8,6 +8,36 @@
 const volumeCache = {};
 const THEME_ORDER = ["dark", "light", "sepia"];
 
+// ── Character portrait config ──────────────────────────────
+// ⚠️  Đổi đường dẫn này cho đúng với folder ảnh nhân vật của bạn.
+//    Ví dụ: "characters/"  hoặc  "images/characters/"
+const CHARACTERS_IMG_DIR = "cote_images/";
+const CHARACTERS_IMG_EXTS = ["png", "jpg", "jpeg", "webp"];
+
+// Tự động build bảng: alias 1 từ / tên ngắn → tên đầy đủ
+// VD: "Ayanokoji" → "Kiyotaka Ayanokoji", "Kei" → "Kei Karuizawa"
+function buildCharAliasMap() {
+  const fullNames = CHARACTERS.filter((n) => n.includes(" "));
+  const map = {};
+  CHARACTERS.forEach((name) => {
+    if (name.includes(" ")) {
+      // Tên đầy đủ → map thẳng vào chính nó
+      map[name.toLowerCase()] = name;
+    } else {
+      // Alias 1 từ → tìm tên đầy đủ đầu tiên chứa từ đó
+      const match = fullNames.find((full) =>
+        full
+          .toLowerCase()
+          .split(" ")
+          .some((part) => part === name.toLowerCase()),
+      );
+      map[name.toLowerCase()] = match || name;
+    }
+  });
+  return map;
+}
+const CHAR_ALIAS_MAP = buildCharAliasMap();
+
 const state = {
   volId: null,
   chapIdx: -1,
@@ -356,9 +386,23 @@ function formatBody(raw, imagesDir) {
       .filter(Boolean);
     let text = escHtml(lines.join("\n")).replace(/\n/g, "<br>");
 
-    CHARACTERS.forEach((name) => {
+    // Dùng placeholder để tránh tên ngắn bị wrap lồng vào tên dài.
+    // VD: "Kei Karuizawa" xử lý trước → placeholder → "Kei" không match được nữa.
+    const captured = [];
+    const sortedChars = [...CHARACTERS].sort((a, b) => b.length - a.length);
+
+    sortedChars.forEach((name) => {
       const re = new RegExp(`(${escRegex(name)})`, "g");
-      text = text.replace(re, `<span class="char">$1</span>`);
+      text = text.replace(re, (match) => {
+        const idx = captured.length;
+        captured.push(match);
+        return `\x00${idx}\x00`;
+      });
+    });
+
+    // Chuyển placeholder → span thực
+    text = text.replace(/\x00(\d+)\x00/g, (_, idx) => {
+      return `<span class="char">${captured[+idx]}</span>`;
     });
 
     html += `<p>${text}</p>`;
@@ -555,6 +599,7 @@ function attachEvents() {
   initBackToTop();
   initFabMenu();
   initLightbox();
+  initCharPortrait();
 }
 
 function initFocusMode() {
@@ -739,4 +784,123 @@ function escAttr(str) {
 
 function escRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ── Character Portrait Popup ───────────────────────────────
+function initCharPortrait() {
+  const popup = $("charPopup");
+  const backdrop = $("charPopupBackdrop");
+  const closeBtn = $("charPopupClose");
+  const img = $("charPopupImg");
+  const ph = $("charPopupPlaceholder"); // placeholder ?
+  const nameEl = $("charPopupName");
+  if (!popup || !backdrop) return;
+
+  let currentName = "";
+
+  // Try loading an image by trying each extension in order
+  function tryLoadImage(name, exts, callback) {
+    const dir = CHARACTERS_IMG_DIR.replace(/\/?$/, "/");
+    // Chỉ thử đúng tên đầy đủ (alias đã được resolve bởi CHAR_ALIAS_MAP)
+    const attempt = (i) => {
+      if (i >= exts.length) {
+        callback(null);
+        return;
+      }
+      const src = dir + name + "." + exts[i];
+      const probe = new Image();
+      probe.onload = () => callback(src);
+      probe.onerror = () => attempt(i + 1);
+      probe.src = src;
+    };
+    attempt(0);
+  }
+
+  function openPopup(name, anchorEl) {
+    currentName = name;
+    nameEl.textContent = name;
+
+    // Reset image state
+    img.classList.remove("loaded");
+    img.src = "";
+    ph.classList.remove("hidden");
+
+    popup.classList.remove("open");
+    backdrop.classList.add("open");
+    popup.setAttribute("aria-hidden", "false");
+
+    // Position on desktop near the clicked element
+    positionPopup(anchorEl);
+
+    // Small delay so CSS transition plays after position is set
+    requestAnimationFrame(() => popup.classList.add("open"));
+
+    document.body.style.overflow = "hidden";
+
+    // Resolve alias → canonical full name for image lookup
+    // VD: "Ayanokoji" → "Kiyotaka Ayanokoji"
+    const canonicalName = CHAR_ALIAS_MAP[name.toLowerCase()] || name;
+
+    // Load image asynchronously using canonical name
+    tryLoadImage(canonicalName, CHARACTERS_IMG_EXTS, (src) => {
+      if (currentName !== name) return; // stale if user opened another
+      if (src) {
+        img.src = src;
+        img.alt = canonicalName;
+        img.classList.add("loaded");
+        ph.classList.add("hidden");
+      }
+    });
+  }
+
+  function closePopup() {
+    popup.classList.remove("open");
+    backdrop.classList.remove("open");
+    popup.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    currentName = "";
+  }
+
+  function positionPopup(anchorEl) {
+    if (window.innerWidth <= 600) return; // CSS handles centering on mobile
+
+    const POPUP_W = 240;
+    const POPUP_H = 310;
+    const MARGIN = 12;
+    const rect = anchorEl.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Prefer below-right of word; fall back to left / above as needed
+    let left = rect.left + rect.width / 2 - POPUP_W / 2;
+    let top = rect.bottom + MARGIN;
+
+    if (left + POPUP_W > vw - MARGIN) left = vw - POPUP_W - MARGIN;
+    if (left < MARGIN) left = MARGIN;
+    if (top + POPUP_H > vh - MARGIN) top = rect.top - POPUP_H - MARGIN;
+    if (top < MARGIN) top = MARGIN;
+
+    popup.style.left = left + "px";
+    popup.style.top = top + "px";
+  }
+
+  // Click on character name spans (event delegation)
+  chapterBody.addEventListener("click", (e) => {
+    const span = e.target.closest(".char");
+    if (!span) return;
+    e.stopPropagation();
+    const name = span.textContent.trim();
+    if (name === currentName && popup.classList.contains("open")) {
+      closePopup();
+    } else {
+      openPopup(name, span);
+    }
+  });
+
+  // Close on backdrop / close button / Escape
+  backdrop.addEventListener("click", closePopup);
+  closeBtn.addEventListener("click", closePopup);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && popup.classList.contains("open")) closePopup();
+  });
 }

@@ -148,6 +148,27 @@
     <!-- FAB (mobile: open sidebar) -->
     <button class="fab-menu" id="fabMenu" aria-label="Mở mục lục">☰</button>
 
+    <!-- CHARACTER PORTRAIT POPUP -->
+    <div
+      class="char-popup"
+      id="charPopup"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+    >
+      <button class="char-popup-close" id="charPopupClose" aria-label="Đóng">
+        ✕
+      </button>
+      <div class="char-popup-img-wrap">
+        <img class="char-popup-img" id="charPopupImg" src="" alt="" />
+        <div class="char-popup-img-placeholder" id="charPopupPlaceholder">
+          <span>?</span>
+        </div>
+      </div>
+      <div class="char-popup-name" id="charPopupName"></div>
+    </div>
+    <div class="char-popup-backdrop" id="charPopupBackdrop"></div>
+
     <!-- LIGHTBOX -->
     <div class="lightbox" id="lightbox" role="dialog" aria-modal="true">
       <button class="lightbox-close" id="lightboxClose" aria-label="Đóng">
