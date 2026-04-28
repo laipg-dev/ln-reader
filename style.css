@@ -802,11 +802,93 @@ body.focus-mode .topbar:hover {
   text-wrap: pretty;
 }
 
+.chapter-body p.narration,
+.chapter-body p.main-pov,
+.chapter-body p.third-person,
+.chapter-body p.inner-monologue,
+.chapter-body p.dialogue {
+  position: relative;
+}
+
+.chapter-body p.main-pov {
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.chapter-body p.third-person {
+  color: color-mix(in srgb, var(--text) 82%, var(--text-muted));
+}
+
+.chapter-body p.inner-monologue {
+  padding: 12px 16px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.thought-label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-display);
+  font-size: 0.72em;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
 .chapter-body p.dialogue {
   margin-left: 0;
-  padding-left: 14px;
-  border-left: 2px solid var(--dialogue-border);
+  padding: 14px 16px;
+  border-left: 3px solid var(--dialogue-border);
+  border-radius: 14px;
+  background: var(--accent-soft);
   font-style: italic;
+  text-align: left;
+}
+
+.dialogue-speaker {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-display);
+  font-size: 0.76em;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.reading-block {
+  scroll-margin-top: calc(var(--topbar-h) + 22px);
+  transition:
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    outline-color 0.18s ease;
+}
+
+.reading-block.active-reading-block {
+  outline: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 68%, transparent);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
+}
+
+.chapter-body p.narration.active-reading-block,
+.chapter-body p.main-pov.active-reading-block,
+.chapter-body p.third-person.active-reading-block {
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.chapter-body p.dialogue.active-reading-block,
+.chapter-body p.inner-monologue.active-reading-block {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 12px 30px rgba(0, 0, 0, 0.08);
+}
+
+.dialogue-text {
+  display: block;
 }
 
 .chapter-body .section-label {
@@ -1299,4 +1381,9 @@ body.focus-mode .chapter-view {
   ::-webkit-scrollbar-thumb:hover {
     background: rgba(128, 108, 89, 0.5);
   }
+}
+
+/* Prevent page scrolling while image / character popup is open without forcing the page to jump. */
+body.modal-open {
+  overflow: hidden;
 }

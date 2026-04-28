@@ -14,29 +14,335 @@ const THEME_ORDER = ["dark", "light", "sepia"];
 const CHARACTERS_IMG_DIR = "characters/";
 const CHARACTERS_IMG_EXTS = ["png", "jpg", "jpeg", "webp"];
 
-// Tự động build bảng: alias 1 từ / tên ngắn → tên đầy đủ
-// VD: "Ayanokoji" → "Kiyotaka Ayanokoji", "Kei" → "Kei Karuizawa"
-function buildCharAliasMap() {
-  const fullNames = CHARACTERS.filter((n) => n.includes(" "));
-  const map = {};
-  CHARACTERS.forEach((name) => {
-    if (name.includes(" ")) {
-      // Tên đầy đủ → map thẳng vào chính nó
-      map[name.toLowerCase()] = name;
-    } else {
-      // Alias 1 từ → tìm tên đầy đủ đầu tiên chứa từ đó
-      const match = fullNames.find((full) =>
-        full
-          .toLowerCase()
-          .split(" ")
-          .some((part) => part === name.toLowerCase()),
-      );
-      map[name.toLowerCase()] = match || name;
-    }
+// File danh sách tên được trích xuất từ truyện.
+// Mỗi dòng 1 tên. File này giúp highlight tên trong nội dung truyện.
+const CHARACTER_NAME_TXT = "danh_sach_ten.txt";
+
+// Những alias bắt buộc để xử lý các cách phiên âm / gõ khác nhau.
+// Key phải viết thường, không dấu, theo normalizeNameForMatch().
+const MANUAL_NAME_ALIASES = {
+  ayanokouji: "Kiyotaka Ayanokoji",
+  ayanokoji: "Kiyotaka Ayanokoji",
+  kiyotaka: "Kiyotaka Ayanokoji",
+
+  ryuuen: "Kakeru Ryuuen",
+  ryuen: "Kakeru Ryuuen",
+  kakeru: "Kakeru Ryuuen",
+
+  ryuji: "Ryuuji Kanzaki",
+  ryuuji: "Ryuuji Kanzaki",
+
+  kouenji: "Rokusuke Koenji",
+  koenji: "Rokusuke Koenji",
+  rokusuke: "Rokusuke Koenji",
+
+  sudou: "Ken Sudo",
+  sudo: "Ken Sudo",
+  ken: "Ken Sudo",
+
+  housen: "Kazuomi Hosen",
+  hosen: "Kazuomi Hosen",
+  kazuomi: "Kazuomi Hosen",
+
+  kiryuuin: "Fuka Kiryuin",
+  kiryuin: "Fuka Kiryuin",
+  fuuka: "Fuka Kiryuin",
+  fuka: "Fuka Kiryuin",
+
+  honami: "Honami Ichinose",
+  ichinose: "Honami Ichinose",
+
+  kei: "Kei Karuizawa",
+  karuizawa: "Kei Karuizawa",
+
+  horikita: "Suzune Horikita",
+  suzune: "Suzune Horikita",
+  manabu: "Manabu Horikita",
+
+  kushida: "Kikyo Kushida",
+  kikyo: "Kikyo Kushida",
+
+  sakayanagi: "Arisu Sakayanagi",
+  arisu: "Arisu Sakayanagi",
+
+  nanase: "Tsubasa Nanase",
+  tsubasa: "Tsubasa Nanase",
+
+  yagami: "Takuya Yagami",
+  takuya: "Takuya Yagami",
+
+  ibuki: "Mio Ibuki",
+  mio: "Mio Ibuki",
+
+  chabashira: "Sae Chabashira",
+  sae: "Sae Chabashira",
+
+  hoshinomiya: "Chie Hoshinomiya",
+  chie: "Chie Hoshinomiya",
+
+  mashima: "Tomonari Mashima",
+  tomonari: "Tomonari Mashima",
+
+  amasawa: "Ichika Amasawa",
+  ichika: "Ichika Amasawa",
+
+  shiina: "Hiyori Shiina",
+  hiyori: "Hiyori Shiina",
+
+  nagumo: "Miyabi Nagumo",
+  miyabi: "Miyabi Nagumo",
+};
+
+let CHAR_ALIAS_MAP = {};
+let CHAR_HIGHLIGHT_NAMES = [];
+let CHAR_IMAGE_NAMES = [];
+
+function normalizeNameForMatch(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .map(normalizeRomajiToken)
+    .join(" ");
+}
+
+function normalizeRomajiToken(token) {
+  return token
+    .replace(/ou/g, "o")
+    .replace(/uu/g, "u")
+    .replace(/oo/g, "o")
+    .replace(/ii/g, "i");
+}
+
+function cleanDisplayName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function uniqueNames(names) {
+  const map = new Map();
+
+  names.forEach((name) => {
+    const clean = cleanDisplayName(name);
+    if (!clean) return;
+
+    const key = normalizeNameForMatch(clean);
+    if (!key) return;
+
+    if (!map.has(key)) map.set(key, clean);
   });
+
+  return [...map.values()];
+}
+
+async function loadNamesFromTxt(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+
+    const text = await res.text();
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function initCharacterMatching() {
+  const namesFromTxt = await loadNamesFromTxt(CHARACTER_NAME_TXT);
+
+  // IMAGE_CHARACTERS lấy từ image_characters.js.
+  // Nếu chưa có file đó thì fallback sang các tên đầy đủ trong CHARACTERS.
+  const imageNames =
+    typeof IMAGE_CHARACTERS !== "undefined" && Array.isArray(IMAGE_CHARACTERS)
+      ? IMAGE_CHARACTERS
+      : CHARACTERS.filter((name) => name.includes(" "));
+
+  CHAR_IMAGE_NAMES = uniqueNames(imageNames);
+
+  const candidates = uniqueNames([
+    ...CHARACTERS,
+    ...namesFromTxt,
+    ...Object.keys(MANUAL_NAME_ALIASES),
+  ]);
+
+  CHAR_ALIAS_MAP = buildFuzzyAliasMap(candidates, CHAR_IMAGE_NAMES);
+
+  // Chỉ highlight những tên có thể map tới ảnh hoặc alias thủ công.
+  // Cách này tự loại các từ tiếng Việt không dấu như: nghe, so, yo, vai...
+  CHAR_HIGHLIGHT_NAMES = candidates
+    .filter((name) => isReliableCharacterAlias(name))
+    .sort((a, b) => b.length - a.length);
+}
+
+function buildFuzzyAliasMap(aliasNames, imageNames) {
+  const map = {};
+
+  aliasNames.forEach((alias) => {
+    const aliasKey = normalizeNameForMatch(alias);
+    if (!aliasKey) return;
+
+    if (MANUAL_NAME_ALIASES[aliasKey]) {
+      map[aliasKey] = MANUAL_NAME_ALIASES[aliasKey];
+      return;
+    }
+
+    const best = findBestCharacterImageName(alias, imageNames);
+    if (best) map[aliasKey] = best;
+  });
+
   return map;
 }
-const CHAR_ALIAS_MAP = buildCharAliasMap();
+
+function isReliableCharacterAlias(name) {
+  const key = normalizeNameForMatch(name);
+  if (!key) return false;
+  if (MANUAL_NAME_ALIASES[key]) return true;
+  if (CHAR_ALIAS_MAP[key]) return true;
+
+  return CHAR_IMAGE_NAMES.some(
+    (imageName) => normalizeNameForMatch(imageName) === key,
+  );
+}
+
+function levenshtein(a, b) {
+  a = normalizeNameForMatch(a);
+  b = normalizeNameForMatch(b);
+
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return dp[m][n];
+}
+
+function similarity(a, b) {
+  a = normalizeNameForMatch(a);
+  b = normalizeNameForMatch(b);
+
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+
+  const distance = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  return 1 - distance / maxLen;
+}
+
+function isCloseToken(a, b) {
+  a = normalizeNameForMatch(a);
+  b = normalizeNameForMatch(b);
+
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  const distance = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+
+  // Tên quá ngắn như Kei, Ken, Mio phải match chính xác để tránh nhầm.
+  if (maxLen <= 3) return distance === 0;
+
+  // Tên 4 đến 5 chữ cho phép sai 1 ký tự.
+  if (maxLen <= 5) return distance <= 1;
+
+  // Tên dài hơn cho phép sai 1 đến 2 ký tự.
+  return distance <= 2 || similarity(a, b) >= 0.88;
+}
+
+function scoreCharacterCandidate(inputName, imageName) {
+  const input = normalizeNameForMatch(inputName);
+  const image = normalizeNameForMatch(imageName);
+
+  if (!input || !image) return 0;
+  if (input === image) return 1;
+
+  const inputTokens = input.split(" ");
+  const imageTokens = image.split(" ");
+
+  const wholeScore = similarity(input, image);
+  let bestTokenTotal = 0;
+  let matchedTokenCount = 0;
+
+  inputTokens.forEach((inputToken) => {
+    let bestTokenScore = 0;
+
+    imageTokens.forEach((imageToken) => {
+      const tokenScore = similarity(inputToken, imageToken);
+      if (tokenScore > bestTokenScore) bestTokenScore = tokenScore;
+      if (isCloseToken(inputToken, imageToken)) matchedTokenCount += 1;
+    });
+
+    bestTokenTotal += bestTokenScore;
+  });
+
+  const avgTokenScore = bestTokenTotal / inputTokens.length;
+  let finalScore = Math.max(wholeScore, avgTokenScore);
+
+  // Tên trong truyện 1 chữ: chỉ cần gần đúng với 1 phần của tên ảnh.
+  if (inputTokens.length === 1 && matchedTokenCount >= 1) {
+    finalScore = Math.max(finalScore, 0.92);
+  }
+
+  // Tên trong truyện có từ 2 chữ: match được ít nhất 2 token thì rất chắc.
+  if (inputTokens.length >= 2 && matchedTokenCount >= 2) {
+    finalScore = Math.max(finalScore, 0.97);
+  }
+
+  return finalScore;
+}
+
+function findBestCharacterImageName(inputName, imageNames = CHAR_IMAGE_NAMES) {
+  const inputKey = normalizeNameForMatch(inputName);
+  if (!inputKey) return null;
+
+  if (MANUAL_NAME_ALIASES[inputKey]) return MANUAL_NAME_ALIASES[inputKey];
+
+  let bestName = null;
+  let bestScore = 0;
+
+  imageNames.forEach((imageName) => {
+    const score = scoreCharacterCandidate(inputName, imageName);
+    if (score > bestScore) {
+      bestScore = score;
+      bestName = imageName;
+    }
+  });
+
+  return bestScore >= 0.9 ? bestName : null;
+}
+
+function buildNameRegex(name) {
+  const parts = cleanDisplayName(name)
+    .split(/\s+/)
+    .map(escRegex)
+    .join("\\s+");
+
+  // Không match bên trong chữ khác.
+  // Ví dụ: Kei không match trong một từ dài hơn.
+  return new RegExp(`(^|[^A-Za-z])(${parts})(?=$|[^A-Za-z])`, "gi");
+}
 
 const state = {
   volId: null,
@@ -72,7 +378,13 @@ const welcomeStats = $("welcomeStats");
 const welcomeLastRead = $("welcomeLastRead");
 const topbarChapter = $("topbarChapter");
 
-document.addEventListener("DOMContentLoaded", () => {
+let readingBlockObserver = null;
+let isRestoringReadingPosition = false;
+let lastSavedScrollAt = 0;
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await initCharacterMatching();
+
   applyTheme(state.theme);
   applyFontSize(state.fontSize);
   buildSidebar();
@@ -83,7 +395,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const saved = loadLastRead();
   if (saved) {
-    openChapterByRef(saved.volId, saved.chapIdx);
+    openChapterByRef(saved.volId, saved.chapIdx, { restorePosition: true });
   } else {
     showWelcome();
   }
@@ -179,7 +491,7 @@ function renderChapterList(volId) {
   listEl.innerHTML = html;
 }
 
-async function openChapter(volId, chapIdx) {
+async function openChapter(volId, chapIdx, options = {}) {
   const vol = findVol(volId);
   if (!vol) return;
 
@@ -202,7 +514,9 @@ async function openChapter(volId, chapIdx) {
   const prevChapIdx = state.chapIdx;
   state.volId = volId;
   state.chapIdx = chapIdx;
-  saveLastRead(volId, chapIdx);
+  if (!options.restorePosition) {
+    saveLastRead(volId, chapIdx, 0, 0);
+  }
 
   if (prevVolId) {
     const prevBtn = document.getElementById(
@@ -225,13 +539,13 @@ async function openChapter(volId, chapIdx) {
   if (activeBtn)
     activeBtn.scrollIntoView({ block: "nearest", behavior: "smooth" });
 
-  renderChapter(vol, chap, chapters, chapIdx);
+  renderChapter(vol, chap, chapters, chapIdx, options);
   renderLibraryOverview();
 
   if (window.innerWidth <= 768) closeSidebar();
 }
 
-async function openChapterByRef(volId, chapIdx) {
+async function openChapterByRef(volId, chapIdx, options = {}) {
   showLoading();
   const vol = findVol(volId);
   if (!vol) {
@@ -250,10 +564,10 @@ async function openChapterByRef(volId, chapIdx) {
     }
   }
 
-  openChapter(volId, chapIdx);
+  openChapter(volId, chapIdx, options);
 }
 
-function renderChapter(vol, chap, chapters, chapIdx) {
+function renderChapter(vol, chap, chapters, chapIdx, options = {}) {
   const year = findYearByVolId(vol.id);
   const chapterCount = chapters.length;
   const estimate = estimateReadingMinutes(chap.body);
@@ -277,17 +591,111 @@ function renderChapter(vol, chap, chapters, chapIdx) {
   const prevBtn = $("prevBtn");
   const nextBtn = $("nextBtn");
 
-  prevBtn.disabled = chapIdx <= 0;
-  nextBtn.disabled = chapIdx >= chapterCount - 1;
+  const hasPrev = hasAdjacentChapter(vol.id, chapIdx, -1, chapterCount);
+  const hasNext = hasAdjacentChapter(vol.id, chapIdx, 1, chapterCount);
+  const nextGoesToAnotherVolume = chapIdx >= chapterCount - 1 && Boolean(findAdjacentVolume(vol.id, 1));
+  const prevGoesToAnotherVolume = chapIdx <= 0 && Boolean(findAdjacentVolume(vol.id, -1));
 
-  prevBtn.onclick = () => openChapter(vol.id, chapIdx - 1);
-  nextBtn.onclick = () => openChapter(vol.id, chapIdx + 1);
+  prevBtn.disabled = !hasPrev;
+  nextBtn.disabled = !hasNext;
+  prevBtn.textContent = prevGoesToAnotherVolume ? "← Volume trước" : "← Chương trước";
+  nextBtn.textContent = nextGoesToAnotherVolume ? "Volume tiếp →" : "Chương tiếp →";
+
+  prevBtn.onclick = () => openAdjacentChapter(vol.id, chapIdx, -1);
+  nextBtn.onclick = () => openAdjacentChapter(vol.id, chapIdx, 1);
 
   updateTopbarChapter(vol.label, chap.title);
   hideLoading();
   showChapterView();
-  window.scrollTo({ top: 0, behavior: "auto" });
+  setupReadingPositionTracking();
+
+  const saved = loadLastRead();
+  const shouldRestore =
+    options.restorePosition &&
+    saved &&
+    saved.volId === vol.id &&
+    saved.chapIdx === chapIdx;
+
+  if (shouldRestore) {
+    restoreReadingPosition(saved);
+  } else {
+    window.scrollTo({ top: 0, behavior: "auto" });
+    setActiveReadingBlock(0, { save: true, scroll: false });
+  }
+
   updateProgress();
+}
+
+function flattenVolumes() {
+  return LIBRARY.flatMap((year) => year.volumes);
+}
+
+function findAdjacentVolume(volId, direction) {
+  const volumes = flattenVolumes();
+  const index = volumes.findIndex((vol) => vol.id === volId);
+
+  if (index === -1) return null;
+
+  return volumes[index + direction] || null;
+}
+
+function hasAdjacentChapter(volId, chapIdx, direction, currentChapterCount) {
+  if (direction > 0) {
+    return chapIdx < currentChapterCount - 1 || Boolean(findAdjacentVolume(volId, 1));
+  }
+
+  return chapIdx > 0 || Boolean(findAdjacentVolume(volId, -1));
+}
+
+async function ensureVolumeLoaded(volId) {
+  const vol = findVol(volId);
+  if (!vol) return null;
+
+  if (!volumeCache[volId]) {
+    showLoading();
+    const raw = await fetchText(vol.file);
+    volumeCache[volId] = parseChapters(raw);
+  }
+
+  return volumeCache[volId];
+}
+
+async function openAdjacentChapter(volId, chapIdx, direction) {
+  const currentChapters = volumeCache[volId] || [];
+
+  if (direction > 0) {
+    if (chapIdx < currentChapters.length - 1) {
+      openChapter(volId, chapIdx + 1);
+      return;
+    }
+
+    const nextVol = findAdjacentVolume(volId, 1);
+    if (!nextVol) return;
+
+    try {
+      await ensureVolumeLoaded(nextVol.id);
+      openChapter(nextVol.id, 0);
+    } catch (err) {
+      renderFetchError(nextVol, err);
+    }
+    return;
+  }
+
+  if (chapIdx > 0) {
+    openChapter(volId, chapIdx - 1);
+    return;
+  }
+
+  const prevVol = findAdjacentVolume(volId, -1);
+  if (!prevVol) return;
+
+  try {
+    const prevChapters = await ensureVolumeLoaded(prevVol.id);
+    if (!prevChapters || !prevChapters.length) return;
+    openChapter(prevVol.id, prevChapters.length - 1);
+  } catch (err) {
+    renderFetchError(prevVol, err);
+  }
 }
 
 function renderFetchError(vol, err) {
@@ -336,19 +744,306 @@ function parseChapters(raw) {
   return chapters;
 }
 
+
+function normalizeBlockText(block) {
+  return String(block || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function classifyTextBlock(block, previousSpeaker = "") {
+  const text = normalizeBlockText(block);
+
+  if (!text) return { type: "empty", text: "" };
+
+  const imgMatch = text.match(
+    /^\[(?:img|hình ảnh|hinh anh)\s*:\s*([^\]]+)\]$/iu,
+  );
+
+  if (imgMatch) {
+    return { type: "image", src: imgMatch[1].trim(), text };
+  }
+
+  if (text.startsWith("## ")) {
+    return { type: "section", text: text.slice(3).trim() };
+  }
+
+  if (
+    /^(Phần|Phan)\s+\d+\s*:/i.test(text) ||
+    /^(Mở đầu|Mo dau|Kết thúc|Ket thuc|Lời độc thoại|Loi doc thoai|Ngoại truyện|Ngoai truyen)\s*:/i.test(text)
+  ) {
+    if (text.length < 100) return { type: "label", text };
+  }
+
+  const speaker = guessDialogueSpeaker(text) || "";
+
+  if (isDialogueBlock(text)) {
+    return { type: "dialogue", speaker, text: cleanDialogueText(text) };
+  }
+
+  if (isInnerMonologueBlock(text)) {
+    return { type: "inner-monologue", speaker: "Ayanokouji", text };
+  }
+
+  if (isMainPovBlock(text)) {
+    return { type: "main-pov", speaker: "Ayanokouji", text };
+  }
+
+  if (isThirdPersonBlock(text)) {
+    return { type: "third-person", text };
+  }
+
+  return { type: "narration", text };
+}
+
+function isDialogueBlock(text) {
+  const trimmed = text.trim();
+  const lines = trimmed.split("\n").map((line) => line.trim()).filter(Boolean);
+
+  if (!trimmed) return false;
+
+  // Dạng: - Cậu nói gì vậy?
+  // Dạng: “Cậu nói gì vậy?” hoặc 「Cậu nói gì vậy?」
+  if (/^[\-–—]\s+/.test(trimmed)) return true;
+  if (/^["“”'‘’「『]/.test(trimmed)) return true;
+
+  const dialogueLineCount = lines.filter((line) =>
+    /^[\-–—]\s+/.test(line) || /^["“”'‘’「『]/.test(line),
+  ).length;
+
+  if (lines.length >= 2 && dialogueLineCount / lines.length >= 0.6) {
+    return true;
+  }
+
+  // Dạng: Horikita: Cậu đang làm gì vậy?
+  const colonSpeaker = trimmed.match(
+    /^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s*[:：]\s+(.+)/,
+  );
+
+  if (colonSpeaker && findBestCharacterImageName(colonSpeaker[1])) {
+    return true;
+  }
+
+  if (/^["“「『].+["”」』]\s*[,，.]?\s*/s.test(trimmed)) {
+    return true;
+  }
+
+  return false;
+}
+
+function cleanDialogueText(text) {
+  return normalizeBlockText(text)
+    .replace(/^[\-–—]\s*/gm, "")
+    .replace(/^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s*[:：]\s+/, "")
+    .trim();
+}
+
+function isInnerMonologueBlock(text) {
+  const trimmed = text.trim();
+  const normalized = normalizeNameForMatch(trimmed);
+
+  if (/^\(.+\)$/.test(trimmed)) return true;
+  if (/^<.+>$/.test(trimmed)) return true;
+
+  const innerMarkers = [
+    "toi nghi",
+    "toi tu hoi",
+    "toi tu nhu",
+    "toi tu noi",
+    "toi tham nghi",
+    "trong dau toi",
+    "trong long toi",
+    "trong tam tri toi",
+    "toi nhan ra",
+    "toi cam thay",
+    "co le toi",
+    "minh nghi",
+    "minh tu hoi",
+    "minh phai",
+  ];
+
+  return innerMarkers.some((marker) => normalized.includes(marker));
+}
+
+function isMainPovBlock(text) {
+  const normalized = ` ${normalizeNameForMatch(text)} `;
+
+  // Truyện chủ yếu đi theo góc nhìn Ayanokouji.
+  // Các đoạn có đại từ ngôi thứ nhất được đánh dấu nhẹ là POV chính.
+  return /\s(toi|ta|minh|to)\s/.test(normalized);
+}
+
+function isThirdPersonBlock(text) {
+  const normalized = ` ${normalizeNameForMatch(text)} `;
+
+  if (isMainPovBlock(text)) return false;
+
+  const thirdPersonMarkers = [
+    " anh ay ",
+    " co ay ",
+    " cau ay ",
+    " cau ta ",
+    " co ta ",
+    " anh ta ",
+    " ong ta ",
+    " ba ta ",
+    " han ",
+    " ho ",
+    " bon ho ",
+    " nguoi do ",
+  ];
+
+  if (thirdPersonMarkers.some((marker) => normalized.includes(marker))) {
+    return true;
+  }
+
+  // Nếu đoạn không phải hội thoại và không có ngôi thứ nhất,
+  // xem như đoạn mô tả / góc nhìn thứ ba ở mức hiển thị nhẹ.
+  return text.length >= 70;
+}
+
+function guessDialogueSpeaker(text) {
+  const colonSpeaker = text.trim().match(
+    /^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s*[:：]\s+/,
+  );
+
+  if (colonSpeaker) {
+    const resolved = resolveCharacterDisplayName(colonSpeaker[1]);
+    if (resolved) return resolved;
+  }
+
+  const normalizedText = normalizeNameForMatch(text);
+  if (!normalizedText) return "";
+
+  const speechVerbs = [
+    "noi",
+    "hoi",
+    "dap",
+    "tra loi",
+    "len tieng",
+    "thi tham",
+    "lam bam",
+    "noi tiep",
+    "goi",
+    "cuoi noi",
+    "ngat loi",
+    "xen vao",
+    "tho dai",
+  ];
+
+  const candidates = uniqueNames([
+    ...CHAR_HIGHLIGHT_NAMES,
+    ...CHAR_IMAGE_NAMES,
+    ...Object.keys(MANUAL_NAME_ALIASES),
+  ]).sort((a, b) => b.length - a.length);
+
+  for (const name of candidates) {
+    const key = normalizeNameForMatch(name);
+    if (!key) continue;
+
+    const nameThenVerb = speechVerbs.some((verb) =>
+      normalizedText.includes(`${key} ${verb}`),
+    );
+
+    const verbThenName = speechVerbs.some((verb) =>
+      normalizedText.includes(`${verb} ${key}`),
+    );
+
+    if (nameThenVerb || verbThenName) {
+      return resolveCharacterDisplayName(name) || cleanDisplayName(name);
+    }
+  }
+
+  return "";
+}
+
+function resolveCharacterDisplayName(name) {
+  const clean = cleanDisplayName(name);
+  const key = normalizeNameForMatch(clean);
+
+  if (!key) return "";
+
+  return CHAR_ALIAS_MAP[key] || findBestCharacterImageName(clean) || clean;
+}
+
+function highlightCharacterNames(text) {
+  const captured = [];
+  const sortedChars = [...CHAR_HIGHLIGHT_NAMES].sort(
+    (a, b) => b.length - a.length,
+  );
+
+  sortedChars.forEach((name) => {
+    const re = buildNameRegex(name);
+
+    text = text.replace(re, (fullMatch, prefix, matchedName) => {
+      const idx = captured.length;
+      captured.push(matchedName);
+      return `${prefix}\x00${idx}\x00`;
+    });
+  });
+
+  return text.replace(/\x00(\d+)\x00/g, (_, idx) => {
+    return `<span class="char">${captured[+idx]}</span>`;
+  });
+}
+
+function renderTextBlock(blockInfo, blockIndex) {
+  const type = blockInfo.type || "narration";
+  const safeType = escAttr(type);
+  const className =
+    type === "dialogue"
+      ? "dialogue"
+      : type === "inner-monologue"
+        ? "inner-monologue"
+        : type === "main-pov"
+          ? "main-pov"
+          : type === "third-person"
+            ? "third-person"
+            : "narration";
+
+  let text = escHtml(blockInfo.text).replace(/\n/g, "<br>");
+  text = highlightCharacterNames(text);
+
+  if (type === "dialogue") {
+    const speaker = blockInfo.speaker ? escHtml(blockInfo.speaker) : "";
+    return `
+      <p id="reading-block-${blockIndex}" class="reading-block ${className}" data-block-index="${blockIndex}" data-block-type="${safeType}">
+        ${speaker ? `<span class="dialogue-speaker">${speaker}</span>` : ""}
+        <span class="dialogue-text">${text}</span>
+      </p>
+    `;
+  }
+
+  if (type === "inner-monologue") {
+    return `
+      <p id="reading-block-${blockIndex}" class="reading-block ${className}" data-block-index="${blockIndex}" data-block-type="${safeType}">
+        <span class="thought-label">Ayanokouji nghĩ</span>
+        ${text}
+      </p>
+    `;
+  }
+
+  return `
+    <p id="reading-block-${blockIndex}" class="reading-block ${className}" data-block-index="${blockIndex}" data-block-type="${safeType}">${text}</p>
+  `;
+}
+
 function formatBody(raw, imagesDir) {
   const paragraphs = raw.split(/\n{2,}/);
   let html = "";
+  let blockIndex = 0;
 
   paragraphs.forEach((block) => {
-    const trimmed = block.trim();
+    const trimmed = normalizeBlockText(block);
     if (!trimmed) return;
 
-    const imgMatch = trimmed.match(
-      /^\[(?:img|hình ảnh|hinh anh)\s*:\s*([^\]]+)\]$/iu,
-    );
-    if (imgMatch) {
-      const rawPath = imgMatch[1].trim();
+    const blockInfo = classifyTextBlock(trimmed);
+
+    if (blockInfo.type === "image") {
+      const rawPath = blockInfo.src.trim();
       const filename = rawPath.replace(/^images\//i, "").trim();
       const src = imagesDir.replace(/\/?$/, "/") + filename;
 
@@ -365,47 +1060,19 @@ function formatBody(raw, imagesDir) {
       return;
     }
 
-    if (trimmed.startsWith("## ")) {
-      html += `<p class="section-title">${escHtml(trimmed.slice(3))}</p>`;
+    if (blockInfo.type === "section") {
+      html += `<p class="section-title">${escHtml(blockInfo.text)}</p>`;
       return;
     }
 
-    if (
-      /^(Phan \d+|Mo dau|Ket thuc|Loi doc thoai|Ngoai truyen)\s*:/i.test(
-        trimmed,
-      ) &&
-      trimmed.length < 80
-    ) {
-      html += `<span class="section-label">${escHtml(trimmed)}</span>`;
+    if (blockInfo.type === "label") {
+      html += `<span class="section-label">${escHtml(blockInfo.text)}</span>`;
       return;
     }
 
-    const lines = trimmed
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    let text = escHtml(lines.join("\n")).replace(/\n/g, "<br>");
 
-    // Dùng placeholder để tránh tên ngắn bị wrap lồng vào tên dài.
-    // VD: "Kei Karuizawa" xử lý trước → placeholder → "Kei" không match được nữa.
-    const captured = [];
-    const sortedChars = [...CHARACTERS].sort((a, b) => b.length - a.length);
-
-    sortedChars.forEach((name) => {
-      const re = new RegExp(`(${escRegex(name)})`, "g");
-      text = text.replace(re, (match) => {
-        const idx = captured.length;
-        captured.push(match);
-        return `\x00${idx}\x00`;
-      });
-    });
-
-    // Chuyển placeholder → span thực
-    text = text.replace(/\x00(\d+)\x00/g, (_, idx) => {
-      return `<span class="char">${captured[+idx]}</span>`;
-    });
-
-    html += `<p>${text}</p>`;
+    html += renderTextBlock(blockInfo, blockIndex);
+    blockIndex += 1;
   });
 
   return html || "<p>Noi dung trong.</p>";
@@ -432,8 +1099,30 @@ function findYearByVolId(volId) {
   );
 }
 
-function saveLastRead(volId, chapIdx) {
-  localStorage.setItem("ln_lastRead", JSON.stringify({ volId, chapIdx }));
+function saveLastRead(volId, chapIdx, blockIndex = null, scrollY = window.scrollY) {
+  const parsedBlockIndex =
+    blockIndex === null || blockIndex === undefined
+      ? null
+      : parseInt(blockIndex, 10);
+
+  const safeBlockIndex = Number.isFinite(parsedBlockIndex)
+    ? parsedBlockIndex
+    : null;
+
+  const safeScrollY = Number.isFinite(scrollY)
+    ? Math.max(0, Math.round(scrollY))
+    : 0;
+
+  localStorage.setItem(
+    "ln_lastRead",
+    JSON.stringify({
+      volId,
+      chapIdx,
+      blockIndex: safeBlockIndex,
+      scrollY: safeScrollY,
+      savedAt: Date.now(),
+    }),
+  );
 }
 
 function loadLastRead() {
@@ -564,7 +1253,7 @@ function attachEvents() {
   welcomeContinueBtn.addEventListener("click", () => {
     const saved = loadLastRead();
     if (saved) {
-      openChapterByRef(saved.volId, saved.chapIdx);
+      openChapterByRef(saved.volId, saved.chapIdx, { restorePosition: true });
     } else {
       expandSidebar();
     }
@@ -576,7 +1265,14 @@ function attachEvents() {
     });
   }
 
-  window.addEventListener("scroll", updateProgress, { passive: true });
+  window.addEventListener(
+    "scroll",
+    () => {
+      updateProgress();
+      saveReadingPositionFromScroll();
+    },
+    { passive: true },
+  );
 
   document.addEventListener("keydown", (event) => {
     const tag = event.target.tagName;
@@ -595,11 +1291,177 @@ function attachEvents() {
     }
   });
 
+  initReadingBlockInteractions();
   initFocusMode();
   initBackToTop();
   initFabMenu();
   initLightbox();
   initCharPortrait();
+}
+
+function initReadingBlockInteractions() {
+  if (!chapterBody) return;
+
+  chapterBody.addEventListener("click", (event) => {
+    if (event.target.closest(".char")) return;
+    if (event.target.closest("img")) return;
+
+    const block = event.target.closest(".reading-block");
+    if (!block) return;
+
+    const blockIndex = parseInt(block.dataset.blockIndex, 10);
+    if (!Number.isFinite(blockIndex)) return;
+
+    setActiveReadingBlock(blockIndex, { save: true, scroll: false });
+  });
+}
+
+function setupReadingPositionTracking() {
+  if (readingBlockObserver) {
+    readingBlockObserver.disconnect();
+    readingBlockObserver = null;
+  }
+
+  const blocks = getReadingBlocks();
+  if (!blocks.length) return;
+
+  readingBlockObserver = new IntersectionObserver(
+    (entries) => {
+      if (isRestoringReadingPosition) return;
+
+      const visibleEntries = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => {
+          const aDistance = Math.abs(a.boundingClientRect.top - window.innerHeight * 0.28);
+          const bDistance = Math.abs(b.boundingClientRect.top - window.innerHeight * 0.28);
+          return aDistance - bDistance;
+        });
+
+      if (!visibleEntries.length) return;
+
+      const blockIndex = parseInt(visibleEntries[0].target.dataset.blockIndex, 10);
+      if (!Number.isFinite(blockIndex)) return;
+
+      setActiveReadingBlock(blockIndex, { save: true, scroll: false });
+    },
+    {
+      root: null,
+      rootMargin: "-22% 0px -62% 0px",
+      threshold: [0, 0.12, 0.35, 0.6],
+    },
+  );
+
+  blocks.forEach((block) => readingBlockObserver.observe(block));
+}
+
+function getReadingBlocks() {
+  return Array.from(chapterBody.querySelectorAll(".reading-block[data-block-index]"));
+}
+
+function getClosestReadingBlock() {
+  const blocks = getReadingBlocks();
+  if (!blocks.length) return null;
+
+  let bestBlock = blocks[0];
+  let bestDistance = Infinity;
+  const targetY = window.innerHeight * 0.3;
+
+  blocks.forEach((block) => {
+    const rect = block.getBoundingClientRect();
+    const distance = Math.abs(rect.top - targetY);
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestBlock = block;
+    }
+  });
+
+  return bestBlock;
+}
+
+function setActiveReadingBlock(blockIndex, options = {}) {
+  const save = options.save !== false;
+  const shouldScroll = options.scroll === true;
+  const target = chapterBody.querySelector(
+    `.reading-block[data-block-index="${blockIndex}"]`,
+  );
+
+  if (!target) return;
+
+  chapterBody
+    .querySelectorAll(".active-reading-block")
+    .forEach((block) => block.classList.remove("active-reading-block"));
+
+  target.classList.add("active-reading-block");
+
+  if (shouldScroll) {
+    target.scrollIntoView({ block: "center", behavior: "auto" });
+  }
+
+  if (save && state.volId && state.chapIdx >= 0) {
+    saveLastRead(state.volId, state.chapIdx, blockIndex, window.scrollY);
+  }
+}
+
+function restoreReadingPosition(saved) {
+  isRestoringReadingPosition = true;
+
+  requestAnimationFrame(() => {
+    const blockIndex =
+      saved.blockIndex === null || saved.blockIndex === undefined
+        ? null
+        : parseInt(saved.blockIndex, 10);
+
+    const target = Number.isFinite(blockIndex)
+      ? chapterBody.querySelector(`.reading-block[data-block-index="${blockIndex}"]`)
+      : null;
+
+    if (target) {
+      setActiveReadingBlock(blockIndex, { save: false, scroll: true });
+    } else if (Number.isFinite(saved.scrollY)) {
+      window.scrollTo({ top: Math.max(0, saved.scrollY), behavior: "auto" });
+      const closest = getClosestReadingBlock();
+      if (closest) {
+        const closestIndex = parseInt(closest.dataset.blockIndex, 10);
+        if (Number.isFinite(closestIndex)) {
+          setActiveReadingBlock(closestIndex, { save: false, scroll: false });
+        }
+      }
+    } else {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      setActiveReadingBlock(0, { save: false, scroll: false });
+    }
+
+    window.setTimeout(() => {
+      isRestoringReadingPosition = false;
+      saveReadingPositionFromScroll(true);
+      updateProgress();
+    }, 250);
+  });
+}
+
+function saveReadingPositionFromScroll(force = false) {
+  if (isRestoringReadingPosition) return;
+  if (!state.volId || state.chapIdx < 0) return;
+  if (!chapterView || chapterView.style.display === "none") return;
+
+  const now = Date.now();
+  if (!force && now - lastSavedScrollAt < 700) return;
+  lastSavedScrollAt = now;
+
+  const activeBlock =
+    chapterBody.querySelector(".active-reading-block") || getClosestReadingBlock();
+
+  const blockIndex = activeBlock
+    ? parseInt(activeBlock.dataset.blockIndex, 10)
+    : null;
+
+  saveLastRead(
+    state.volId,
+    state.chapIdx,
+    Number.isFinite(blockIndex) ? blockIndex : null,
+    window.scrollY,
+  );
 }
 
 function initFocusMode() {
@@ -663,17 +1525,15 @@ function initLightbox() {
     lightboxImg.src = src;
     lightboxImg.alt = alt || "";
     lightbox.classList.add("open");
-    // iOS Safari cần fixed position để block scroll đúng cách
-    const scrollY = window.scrollY;
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-    document.body.dataset.scrollY = scrollY;
+
+    // Do not lock scroll with position: fixed here.
+    // That can make the page jump to the top, then back to the old position.
+    document.body.classList.add("modal-open");
   }
 
   function closeLightbox() {
     lightbox.classList.remove("open");
-    document.body.style.overflow = "";
+    document.body.classList.remove("modal-open");
   }
 
   chapterBody.addEventListener("click", (event) => {
@@ -727,10 +1587,14 @@ function renderLibraryOverview() {
   if (!vol) return;
 
   const chapter = volumeCache[saved.volId]?.[saved.chapIdx];
+  const blockText = Number.isInteger(saved.blockIndex)
+    ? ` · doan ${saved.blockIndex + 1}`
+    : "";
+
   welcomeLastRead.innerHTML = `
     <span class="welcome-last-read-label">Dang doc tiep</span>
     <strong>${escHtml(vol.label)}</strong>
-    <span>${chapter ? escHtml(chapter.title) : "Mo lai dung vi tri da luu"}</span>
+    <span>${chapter ? escHtml(chapter.title) : "Mo lai dung vi tri da luu"}${escHtml(blockText)}</span>
   `;
 }
 
@@ -812,7 +1676,7 @@ function initCharPortrait() {
         callback(null);
         return;
       }
-      const src = dir + name + "." + exts[i];
+      const src = dir + encodeURIComponent(name) + "." + exts[i];
       const probe = new Image();
       probe.onload = () => callback(src);
       probe.onerror = () => attempt(i + 1);
@@ -840,16 +1704,15 @@ function initCharPortrait() {
     // Small delay so CSS transition plays after position is set
     requestAnimationFrame(() => popup.classList.add("open"));
 
-    // iOS Safari cần fixed position để block scroll đúng cách
-    const scrollY = window.scrollY;
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-    document.body.dataset.scrollY = scrollY;
+    // Do not lock scroll with position: fixed here.
+    // That can make the page jump to the top, then back to the old position.
+    document.body.classList.add("modal-open");
 
-    // Resolve alias → canonical full name for image lookup
-    // VD: "Ayanokoji" → "Kiyotaka Ayanokoji"
-    const canonicalName = CHAR_ALIAS_MAP[name.toLowerCase()] || name;
+    // Resolve alias / tên lệch chính tả → tên file ảnh gần đúng nhất.
+    // VD: "Ryuen" hoặc "RYuuen" → "Kakeru Ryuuen".
+    const nameKey = normalizeNameForMatch(name);
+    const canonicalName =
+      CHAR_ALIAS_MAP[nameKey] || findBestCharacterImageName(name) || name;
 
     // Load image asynchronously using canonical name
     tryLoadImage(canonicalName, CHARACTERS_IMG_EXTS, (src) => {
@@ -867,12 +1730,7 @@ function initCharPortrait() {
     popup.classList.remove("open");
     backdrop.classList.remove("open");
     popup.setAttribute("aria-hidden", "true");
-    // Restore scroll (iOS-safe)
-    const savedY = parseInt(document.body.dataset.scrollY || "0", 10);
-    document.body.style.position = "";
-    document.body.style.top = "";
-    document.body.style.width = "";
-    window.scrollTo(0, savedY);
+    document.body.classList.remove("modal-open");
     currentName = "";
   }
 
